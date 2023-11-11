@@ -1,4 +1,4 @@
-use game_boyish::cartridge::{load, print_header, check_checksum};
+use game_boyish::{cartridge::{load, print_header, check_checksum}, util::extract_opcode::load_json};
 
 fn main() {
     println!("Welcome to GameBoyish the wanna be gameboy emulator!");
@@ -16,4 +16,6 @@ fn main() {
     println!("check: {}", check1);
     println!("check: {}", check2);
     println!("check: {}", check3);
+    let opcodes_nopre = load_json("/home/anon/Documents/Code/GameBoyish/opcodes_nopre.json");
+    let opcodes_pre = load_json("/home/anon/Documents/Code/GameBoyish/opcodes_pre.json");
 }
