@@ -3,6 +3,7 @@ use std::io;
 pub enum Errors {
     // Wrapped error from io::error
     IOError(io::Error),
+    ErrorReadingFile(io::Error),
 }
 impl From<io::Error> for Errors {
     fn from(e: io::Error) -> Self {

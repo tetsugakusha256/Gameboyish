@@ -5,3 +5,4 @@ pub mod timer;
 pub mod cartridge;
 pub mod util;
 pub mod emulator;
+pub mod register;
