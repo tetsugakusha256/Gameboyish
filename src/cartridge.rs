@@ -101,8 +101,6 @@ mod tests {
     #[test]
     fn load_tetris() {
         assert_eq!(0x0100, 0x0100);
-        println!("haha");
         let test = load("../roms/Tetris (JUE) (V1.1) [!].gb");
-        println!("haha2");
     }
 }
