@@ -5,6 +5,7 @@ pub enum Errors {
     IOError(io::Error),
     ErrorReadingFile(io::Error),
     SerdeJsonError(serde_json::Error),
+    BusAccessError,
 }
 impl From<io::Error> for Errors {
     fn from(e: io::Error) -> Self {
