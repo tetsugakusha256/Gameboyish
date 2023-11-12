@@ -1,0 +1,105 @@
+use std::{cell::RefCell, rc::Rc, time::Instant};
+
+use crate::{bus::Bus, cpu::CPU, io_handler::IOHandler, ppu::PPU, screen::Screen, timer::Timer};
+#[derive(PartialEq, Eq)]
+pub enum EmulatorState {
+    Running,
+    Paused,
+    Stopped,
+}
+pub struct Emulator {
+    pub cpu: CPU,
+    pub ppu: PPU,
+    pub io_handler: IOHandler,
+    pub bus: Rc<RefCell<Bus>>,
+    pub timer: Timer,
+    pub state: EmulatorState,
+    pub cycles: u64,
+    pub screen: Screen,
+}
+impl Emulator {
+    pub fn init(&mut self){
+        self.screen.init();
+        self.start();
+    }
+    pub fn start(&mut self) {
+        self.state = EmulatorState::Running;
+        self.main_loop();
+    }
+
+    pub fn stop(&mut self) {
+        self.state = EmulatorState::Stopped;
+    }
+
+    pub fn pause_resume() {}
+    fn main_loop(&mut self) {
+        if self.state == EmulatorState::Running {
+            loop {
+                self.update_emulator_state();
+                if self.state != EmulatorState::Running{
+                    break;
+                }
+            }
+        }
+    }
+    fn update_emulator_state(&mut self) {
+        if self.timer.check_next_tick() {
+            self.timer.next_tick();
+            self.cycles += 1;
+            // Think where to put this because reading button is made in 2 step
+            // put a bit to set if we want to check direction or buttons
+            // then read the value (How many cycles in between those?)
+            self.io_handler.next_tick();
+            self.cpu.next_tick();
+            self.ppu.next_tick();
+            self.screen.next_tick();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Emulator, EmulatorState, CPU};
+    use crate::{
+        bus::Bus, io_handler::IOHandler, ppu::PPU, register::Registers, screen::Screen,
+        timer::Timer,
+    };
+    use std::{cell::RefCell, rc::Rc};
+
+    #[test]
+    fn multiple_bus_access() {
+        let bus = Rc::new(RefCell::new(Bus::new()));
+        let emu = Emulator {
+            cpu: CPU::new(Rc::clone(&bus)),
+            ppu: PPU {
+                bus: Rc::clone(&bus),
+            },
+            io_handler: IOHandler {
+                bus: Rc::clone(&bus),
+            },
+            bus,
+            timer: Timer::new(),
+            state: EmulatorState::Running,
+            cycles: 0,
+            screen: Screen::new(400,400),
+        };
+        {
+            emu.cpu.bus.borrow_mut().write_slice(0x0010, &[1, 2, 3]);
+            let binding = emu.cpu.bus.borrow();
+            let slice = binding.read_bytes_range(0x0010, 3);
+            assert_eq!(slice, &[1, 2, 3]);
+        }
+        {
+            emu.ppu.bus.borrow_mut().write_slice(0x0010, &[1, 2, 3]);
+            let binding = emu.ppu.bus.borrow();
+            let slice = binding.read_bytes_range(0x0010, 3);
+            assert_eq!(slice, &[1, 2, 3]);
+        }
+        {
+            emu.ppu.bus.borrow_mut().write_bytes(0x00A0, 5);
+            let binding = emu.cpu.bus.borrow();
+            let val = binding.read_bytes(0x00A0);
+            assert_eq!(val, 5);
+        }
+    }
+}

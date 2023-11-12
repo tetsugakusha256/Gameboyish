@@ -6,3 +6,5 @@ pub mod cartridge;
 pub mod util;
 pub mod emulator;
 pub mod register;
+pub mod io_handler;
+pub mod screen;

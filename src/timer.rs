@@ -8,6 +8,7 @@ pub struct Timer {
 impl Timer {
     pub fn new() -> Timer {
         let frequency = 4194304u32;
+        // let frequency = 60u32;
         Timer {
             frequency,
             delta_step: Timer::step_length_nanosec(frequency),
@@ -34,6 +35,6 @@ mod tests {
     fn delta_step_test() {
         let timer = Timer::new();
         println!("tMIEME: {:?}", timer.delta_step);
-        assert_eq!(238,timer.delta_step);
+        assert_eq!(238, timer.delta_step);
     }
 }

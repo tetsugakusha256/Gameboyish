@@ -1,6 +1,6 @@
-use std::{rc::Rc, cell::RefCell};
+use std::{cell::RefCell, rc::Rc};
 
-use crate::{register::Registers, bus::Bus};
+use crate::{bus::Bus, register::Registers};
 
 /// 8bit op target
 pub enum RegTarget {
@@ -24,17 +24,28 @@ pub enum RegTarget {
 pub struct CPU {
     pub reg: Registers,
     pub bus: Rc<RefCell<Bus>>,
+    cycles_since_last_cmd: u64,
+    cycles_to_wait: u64,
 }
 impl CPU {
-    pub fn new() -> CPU {
+    pub fn new(bus: Rc<RefCell<Bus>>) -> CPU {
         CPU {
             reg: Registers::new(),
-            bus: Rc::new(RefCell::new(Bus::new()))
+            bus, 
+            cycles_to_wait: 0,
+            cycles_since_last_cmd: 0,
         }
     }
-    pub fn op_add_8bit(&mut self, left: RegTarget, right: RegTarget){
-
+    // Check if I should do stuff and wait the proper amount of cycle 
+    // or wait and then do stuff
+    pub fn next_tick(&mut self) {
+        if self.cycles_since_last_cmd >= self.cycles_to_wait {
+            self.cycles_since_last_cmd = 0;
+            // Run next command
+        }
+        self.cycles_since_last_cmd += 1;
     }
+    pub fn op_add_8bit(&mut self, left: RegTarget, right: RegTarget) {}
     pub fn op_load_reg(&mut self, into: RegTarget, from: RegTarget) {
         let from = match from {
             RegTarget::A => self.reg.get_a(),
@@ -131,8 +142,6 @@ impl CPU {
             0x3e => {
                 self.op_load_reg(RegTarget::A, RegTarget::N8);
             }
-
-
 
             0x40 => {
                 self.op_load_reg(RegTarget::B, RegTarget::B);
@@ -328,14 +337,12 @@ impl CPU {
                 self.op_load_reg(RegTarget::A, RegTarget::A);
             }
 
-
             0xe0 => {
                 self.op_load_reg(RegTarget::A8, RegTarget::A);
             }
             0xf0 => {
                 self.op_load_reg(RegTarget::A, RegTarget::A8);
             }
-
 
             0xe2 => {
                 self.op_load_reg(RegTarget::Cv, RegTarget::A);
@@ -352,6 +359,41 @@ impl CPU {
             }
             // 0x02 => {self.op_load(from, into)}
             _ => unreachable!(),
+        }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::CPU;
+    use crate::{bus::Bus, register::Registers};
+    use std::{cell::RefCell, rc::Rc};
+
+    #[test]
+    fn bus_access() {
+        let bus = Rc::new(RefCell::new(Bus::new()));
+        let cpu2 = CPU {
+            reg: Registers::new(),
+            bus: Rc::clone(&bus),
+            cycles_since_last_cmd: 0,
+            cycles_to_wait:0,
+        };
+        let cpu = CPU {
+            reg: Registers::new(),
+            bus: Rc::clone(&bus),
+            cycles_since_last_cmd: 0,
+            cycles_to_wait:0,
+        };
+        {
+            cpu.bus.borrow_mut().write_slice(0x0010, &[1, 2, 3]);
+            let binding = cpu.bus.borrow();
+            let slice = binding.read_bytes_range(0x0010, 3);
+            assert_eq!(slice, &[1, 2, 3]);
+        }
+        {
+            cpu2.bus.borrow_mut().write_bytes(0xFF00, 7);
+            let binding = cpu2.bus.borrow();
+            let slice = binding.read_bytes_range(0xFF00, 3);
+            assert_eq!(slice, &[7, 0, 0]);
         }
     }
 }
