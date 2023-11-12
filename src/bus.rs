@@ -1,5 +1,5 @@
 pub struct Bus {
-    data: [u8; 0x1_0000],
+    pub data: [u8; 0x1_0000],
 }
 impl Bus {
     pub fn new() -> Bus {
@@ -15,7 +15,7 @@ impl Bus {
         let add = address as usize;
         let len = length as usize;
         let add_end = add + len;
-        if add_end > len {
+        if add_end > self.data.len() {
             panic!("Trying to read out of bus memory");
         }
         return &self.data[add..add_end];
