@@ -20,6 +20,8 @@ pub struct Emulator {
 impl Emulator {
     pub fn init(&mut self){
         self.screen.init();
+        self.bus.borrow_mut().init();
+        self.bus.borrow_mut().load_cartridge("roms/Tetris (JUE) (V1.1) [!].gb").unwrap();
         self.start();
     }
     pub fn start(&mut self) {
@@ -71,9 +73,7 @@ mod tests {
         let bus = Rc::new(RefCell::new(Bus::new()));
         let emu = Emulator {
             cpu: CPU::new(Rc::clone(&bus)),
-            ppu: PPU {
-                bus: Rc::clone(&bus),
-            },
+            ppu: PPU::new(Rc::clone(&bus)),
             io_handler: IOHandler {
                 bus: Rc::clone(&bus),
             },
@@ -96,9 +96,9 @@ mod tests {
             assert_eq!(slice, &[1, 2, 3]);
         }
         {
-            emu.ppu.bus.borrow_mut().write_bytes(0x00A0, 5);
+            emu.ppu.bus.borrow_mut().write_byte(0x00A0, 5);
             let binding = emu.cpu.bus.borrow();
-            let val = binding.read_bytes(0x00A0);
+            let val = binding.read_byte(0x00A0);
             assert_eq!(val, 5);
         }
     }

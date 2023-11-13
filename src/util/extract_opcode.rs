@@ -2,34 +2,44 @@ use super::error_type::Errors;
 use std::{collections::HashMap, error::Error, fs::File, io::Read};
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
-struct Operand {
-    name: String,
-    immediate: bool,
-    bytes: Option<usize>,
+pub struct Operand {
+    pub name: String,
+    pub immediate: bool,
+    pub increment: Option<bool>,
+    pub decrement: Option<bool>,
+    pub bytes: Option<usize>,
 }
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
-struct Flags {
-    Z: String,
-    N: String,
-    H: String,
-    C: String,
+pub struct Flags {
+    pub Z: String,
+    pub N: String,
+    pub H: String,
+    pub C: String,
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Clone, Debug)]
-struct Instruction {
-    mnemonic: String,
-    bytes: usize,
-    cycles: Vec<usize>,
-    operands: Vec<Operand>,
-    immediate: bool,
-    flags: Flags,
+pub struct Instruction {
+    pub mnemonic: String,
+    pub bytes: usize,
+    pub cycles: Vec<usize>,
+    pub operands: Vec<Operand>,
+    pub immediate: bool,
+    pub flags: Flags,
+}
+impl Instruction{
+    pub fn operands_tuple(&self) -> Option<(Operand,Operand)>{
+        if self.operands.len() == 2 {
+            return Some((self.operands[0].clone(),self.operands[1].clone()));
+        }
+        None
+    }
 }
 
 // TODO: try converting to a vec and access by opcode as it's exactly the index
 #[derive(serde::Deserialize, serde::Serialize, Clone)]
-struct Instructions(HashMap<String, Instruction>);
+pub struct Instructions(HashMap<String, Instruction>);
 
-pub fn load_json(file_path: &str) -> Result<(), Errors> {
+pub fn load_json(file_path: &str) -> Result<Vec<Instruction>, Errors> {
     let mut file = File::open(file_path)?;
     /// Load data from disk
     pub fn load(file: &mut File) -> Result<Instructions, Errors> {
@@ -40,20 +50,23 @@ pub fn load_json(file_path: &str) -> Result<(), Errors> {
     }
     let data = load(&mut file);
 
-    let mut test = data.unwrap();
-    let a = test.0.entry("0x02".to_string()).or_insert(Instruction {
-        mnemonic: "ters".to_string(),
-        bytes: 2,
-        cycles: vec![2],
-        operands: vec![],
-        immediate: true,
-        flags: Flags {
-            Z: "a".to_string(),
-            N: "a".to_string(),
-            H: "a".to_string(),
-            C: "a".to_string(),
-        },
-    });
-    println!("test :{:?}", &a);
-    Ok(())
+    let test = data.unwrap();
+    let vec_in_order: Vec<Instruction> = (0x00..=0xFF)
+        .map(|num| test.0.get(&format!("0x{:02X}", num)).cloned().unwrap())
+        .collect();
+    let mut hash: HashMap<String, bool> = HashMap::new();
+    for instruction in &vec_in_order {
+        if instruction.operands.len() != 0 {
+            for op in &instruction.operands {
+                if !hash.contains_key(&op.name) {
+                    hash.insert(op.name.clone(), true);
+                }
+            }
+        }
+    }
+    for mnem in hash {
+        println!("{}", mnem.0);
+    }
+    println!("test :{:?}", vec_in_order[0xAF]);
+    Ok(vec_in_order)
 }

@@ -32,7 +32,7 @@ pub fn load(file_path: &str) -> Result<Vec<u8>, Errors> {
     let byte_read = file.read_to_end(&mut file_data);
     match byte_read {
         Ok(x) => {
-            println!("Byte read: {}", x);
+            eprintln!("Byte read: {}", x);
         }
         Err(e) => return Err(Errors::ErrorReadingFile(e)),
     }

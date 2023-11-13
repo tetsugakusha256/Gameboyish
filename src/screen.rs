@@ -3,6 +3,8 @@ use std::time::Instant;
 use minifb::{MouseMode, Window, WindowOptions};
 use raqote::{DrawOptions, DrawTarget, PathBuilder, SolidSource, Source};
 
+pub const GAMEBOY_SCREEN_WIDTH: usize = 144usize;
+pub const GAMEBOY_SCREEN_HEIGHT: usize = 160usize;
 pub struct Screen {
     width: usize,
     height: usize,
@@ -16,7 +18,7 @@ impl Screen {
             width,
             height,
             window: None,
-            refresh_rate_delta: 32,
+            refresh_rate_delta: 16,
             last_refresh: Instant::now(),
         }
     }
@@ -26,7 +28,7 @@ impl Screen {
             self.width,
             self.height,
             WindowOptions {
-                resize: true,
+                // resize: true,
                 ..WindowOptions::default()
             },
         )
@@ -41,27 +43,32 @@ impl Screen {
             self.draw();
         }
     }
+    // pub fn draw(&mut self, array: [[u8;GAMEBOY_SCREEN_WIDTH];GAMEBOY_SCREEN_HEIGHT]) {
     pub fn draw(&mut self) {
+        // let vec = array.concat();
         if let Some(window) = &mut self.window {
             let size = window.get_size();
-            let mut dt = DrawTarget::new(size.0 as i32, size.1 as i32);
-            dt.clear(SolidSource::from_unpremultiplied_argb(
-                0xff, 0xff, 0xff, 0xff,
-            ));
-            let mut pb = PathBuilder::new();
-            if let Some(pos) = window.get_mouse_pos(MouseMode::Clamp) {
-                pb.rect(pos.0, pos.1, 100., 130.);
-                let path = pb.finish();
-                dt.fill(
-                    &path,
-                    &Source::Solid(SolidSource::from_unpremultiplied_argb(0xff, 0, 0xff, 0)),
-                    &DrawOptions::new(),
-                );
-
-                window
-                    .update_with_buffer(dt.get_data(), size.0, size.1)
-                    .unwrap();
-            }
+            window
+                .update_with_buffer(
+                    &random_buffer(GAMEBOY_SCREEN_WIDTH, GAMEBOY_SCREEN_HEIGHT),
+                    GAMEBOY_SCREEN_WIDTH,
+                    GAMEBOY_SCREEN_HEIGHT,
+                )
+                .unwrap();
         }
     }
+}
+fn random_buffer(width: usize, height: usize) -> Vec<u32> {
+    let azure_blue = from_u8_rgb(0, 127, 255);
+
+    let t = Instant::now();
+    let mut buffer = vec![azure_blue; width * height];
+    for ele in &mut buffer {
+        *ele = from_u8_rgb((t.elapsed().as_nanos() % 255) as u8, 62, 55);
+    }
+    buffer
+}
+fn from_u8_rgb(r: u8, g: u8, b: u8) -> u32 {
+    let (r, g, b) = (r as u32, g as u32, b as u32);
+    (r << 16) | (g << 8) | b
 }
