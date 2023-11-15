@@ -5,8 +5,10 @@ use super::u8_traits::{NibblesU8, Bit, NibblesU16};
 /// Add b interpreted as a signed int into a
 /// if the bool is true => overflow occured
 pub fn signed_addition(a: u16, b: u8) -> (u16, bool) {
+    println!("before {}", b);
     let signed_b: i32 = b as i8 as i32;
     let signed_a: i32 = a as i32;
+    println!("after {}", signed_b);
     let result = signed_a + signed_b;
 
     let overflow = result < 0 || result > 0xFFFF;

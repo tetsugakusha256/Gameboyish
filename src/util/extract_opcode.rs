@@ -26,12 +26,21 @@ pub struct Instruction {
     pub immediate: bool,
     pub flags: Flags,
 }
-impl Instruction{
-    pub fn operands_tuple(&self) -> Option<(Operand,Operand)>{
+impl Instruction {
+    pub fn operands_tuple(&self) -> Option<(Operand, Operand)> {
         if self.operands.len() == 2 {
-            return Some((self.operands[0].clone(),self.operands[1].clone()));
+            return Some((self.operands[0].clone(), self.operands[1].clone()));
         }
         None
+    }
+}
+impl std::fmt::Display for Instruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Instruction: \n Mnemonic: {} \n operands:{:?}",
+            self.mnemonic, self.operands
+        )
     }
 }
 

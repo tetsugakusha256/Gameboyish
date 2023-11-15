@@ -8,7 +8,36 @@ pub struct Bus {
     pub data: [u8; 0x1_0000],
     pub video_mem_block: VideoMemBlock,
 }
+impl std::fmt::Display for Bus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut text = "".to_string();
+        for (i, num) in self.data.iter().enumerate() {
+            let text_num = format!("{:#04x} ", num).replace("0x", "").to_uppercase();
+            text += format!("{} ", text_num).as_str();
+            if i % 16 == 0 {
+                text += "\n";
+            }
+        }
+        write!(f, "Bus: \n Data: {}", text)
+    }
+}
 impl Bus {
+    pub fn print_slice(&self, a: u16, b: u16) {
+        let mut text = "".to_string();
+        for (i, num) in self.data.iter().enumerate() {
+            if i >= a as usize {
+                if i % 16 == 0 {
+                    text += format!("\n {:#06x} : ", i).as_str();
+                }
+                let text_num = format!("{:#04x} ", num).replace("0x", "").to_uppercase();
+                text += format!("{} ", text_num).as_str();
+                if i > b as usize {
+                    break;
+                }
+            }
+        }
+        println!("Bus \n {}", text);
+    }
     pub fn new() -> Bus {
         Bus {
             data: [0x00; 0x1_0000],
@@ -31,8 +60,20 @@ impl Bus {
         Ok(())
     }
     pub fn read_byte(&self, address: u16) -> u8 {
+        if address == 0xFF44 {
+            return 0x90;
+        }
         let add = address as usize;
         return self.data[add];
+    }
+    pub fn read_byte_small_endian(&self, address: u16) -> u8 {
+        let high = address.high_nibble();
+        let low = address.high_nibble();
+        let small_endian_address = ((low as u16) << 8) + (high as u16);
+        if small_endian_address == 0xFF44 {
+            return 0x90;
+        }
+        self.data[small_endian_address as usize]
     }
     pub fn read_2_bytes_little_endian(&self, address: u16) -> u16 {
         let low = self.read_byte(address);
@@ -40,6 +81,13 @@ impl Bus {
         ((high as u16) << 8) + (low as u16)
     }
 
+    /// write the byte at address + 0x0001
+    pub fn write_next_byte(&mut self, address: u16, value: u8) {
+        if address == 0xFFFF {
+            panic!("trying to read out of bus");
+        }
+        self.write_byte(address + 0x0001, value);
+    }
     /// Read the byte at address + 0x0001
     pub fn read_next_byte(&self, address: u16) -> u8 {
         if address == 0xFFFF {
@@ -57,7 +105,7 @@ impl Bus {
     pub fn get_a16_value(&self, pc: u16) -> u8 {
         self.read_byte(self.get_a16_address(pc))
     }
-    pub fn write_a16(&self, pc:u16, value:u16){
+    pub fn write_a16(&mut self, pc: u16, value: u16) {
         self.write_2_bytes_little_endian(self.get_a16_address(pc), value)
     }
 

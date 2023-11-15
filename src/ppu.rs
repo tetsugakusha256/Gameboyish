@@ -1,6 +1,9 @@
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
-use crate::{bus::Bus, screen::{Screen, GAMEBOY_SCREEN_HEIGHT, GAMEBOY_SCREEN_WIDTH}};
+use crate::{
+    bus::Bus,
+    screen::{Screen, GAMEBOY_SCREEN_HEIGHT, GAMEBOY_SCREEN_WIDTH},
+};
 
 pub enum PPUModes {
     Mode0,
@@ -13,6 +16,8 @@ pub enum VideoMemBlock {
     OAM,
     None,
 }
+
+#[warn(dead_code)]
 const MODE_2_DOTS: usize = 80usize;
 const MODE_3_DOTS_MIN: usize = 172usize;
 const MODE_3_DOTS_MAX: usize = 289usize;
@@ -30,7 +35,7 @@ impl PPU {
     pub fn new(bus: Rc<RefCell<Bus>>) -> PPU {
         PPU {
             bus,
-            screen_array: [[0;GAMEBOY_SCREEN_WIDTH];GAMEBOY_SCREEN_HEIGHT],
+            screen_array: [[0; GAMEBOY_SCREEN_WIDTH]; GAMEBOY_SCREEN_HEIGHT],
             current_mode: PPUModes::Mode0,
             dots_counter: 0,
         }

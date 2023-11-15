@@ -38,7 +38,7 @@ impl Screen {
 
     pub fn next_tick(&mut self) {
         if self.last_refresh.elapsed().as_millis() >= self.refresh_rate_delta as u128 {
-            println!("refresh: {:?}", self.last_refresh.elapsed());
+            // println!("refresh: {:?}", self.last_refresh.elapsed());
             self.last_refresh = Instant::now();
             self.draw();
         }

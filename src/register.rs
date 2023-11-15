@@ -30,6 +30,17 @@ impl Registers {
             pc: 0,
         }
     }
+    pub fn new_doctor()->Registers{
+        Registers {
+            af: 0x01B0,
+            bc: 0x0013,
+            de: 0x00D8,
+            hl: 0x014D,
+            sp: 0xFFFE,
+            pc: 0x0100,
+        }
+
+    }
     pub fn set_flags(&mut self, z: bool, n: bool, h: bool, c: bool) {
         self.set_flag_z(z);
         self.set_flag_n(n);
@@ -83,7 +94,19 @@ impl Registers {
     pub fn set_l(&mut self, val: u8) {
         set_low(&mut self.hl, val);
     }
-    pub fn get(&self, target: NopreOperands) -> u8 {
+    pub fn set_byte_reg(&mut self, target: &NopreOperands, value: u8){
+        match target {
+            NopreOperands::A => self.set_a(value),
+            NopreOperands::B => self.set_b(value),
+            NopreOperands::C => self.set_c(value),
+            NopreOperands::D => self.set_d(value),
+            NopreOperands::E => self.set_e(value),
+            NopreOperands::H => self.set_h(value),
+            NopreOperands::L => self.set_l(value),
+            _ => panic!("Invalid 8bit reg")
+        }
+    }
+    pub fn get(&self, target: &NopreOperands) -> u8 {
         match target {
             NopreOperands::A => self.get_a(),
             NopreOperands::B => self.get_b(),
@@ -115,6 +138,9 @@ impl Registers {
     }
     pub fn get_l(&self) -> u8 {
         return get_low(&self.hl);
+    }
+    pub fn get_f(&self) -> u8 {
+        return get_low(&self.af);
     }
     /// return pc + 0x0001 the address of the byte after the pointer pc
     pub fn get_pc_next(&self) -> u16 {

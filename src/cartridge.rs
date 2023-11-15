@@ -32,6 +32,7 @@ pub fn load(file_path: &str) -> Result<Vec<u8>, Errors> {
     let byte_read = file.read_to_end(&mut file_data);
     match byte_read {
         Ok(x) => {
+            println!("loading file: {}", file_path);
             eprintln!("Byte read: {}", x);
         }
         Err(e) => return Err(Errors::ErrorReadingFile(e)),
@@ -102,5 +103,6 @@ mod tests {
     fn load_tetris() {
         assert_eq!(0x0100, 0x0100);
         let test = load("../roms/Tetris (JUE) (V1.1) [!].gb");
+        let test = load("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/06-ld r,r.gb");
     }
 }

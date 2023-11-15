@@ -18,10 +18,14 @@ pub struct Emulator {
     pub screen: Screen,
 }
 impl Emulator {
-    pub fn init(&mut self){
+    pub fn init(&mut self) {
         self.screen.init();
         self.bus.borrow_mut().init();
-        self.bus.borrow_mut().load_cartridge("roms/Tetris (JUE) (V1.1) [!].gb").unwrap();
+        self.bus
+            .borrow_mut()
+            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/Tetris (JUE) (V1.1) [!].gb")
+            .unwrap();
+        self.cpu.init_with_log();
         self.start();
     }
     pub fn start(&mut self) {
@@ -34,27 +38,32 @@ impl Emulator {
     }
 
     pub fn pause_resume() {}
+    // main emulator loop
     fn main_loop(&mut self) {
         if self.state == EmulatorState::Running {
             loop {
                 self.update_emulator_state();
-                if self.state != EmulatorState::Running{
+                if self.state != EmulatorState::Running {
                     break;
                 }
             }
         }
     }
+    // This function make calls every clock tick
     fn update_emulator_state(&mut self) {
         if self.timer.check_next_tick() {
             self.timer.next_tick();
             self.cycles += 1;
-            // Think where to put this because reading button is made in 2 step
+            // TODO: Think where to put this because reading button is made in 2 step
             // put a bit to set if we want to check direction or buttons
             // then read the value (How many cycles in between those?)
             self.io_handler.next_tick();
             self.cpu.next_tick();
             self.ppu.next_tick();
             self.screen.next_tick();
+        }
+        if self.cycles > 10000{
+            self.stop();
         }
     }
 }
@@ -81,7 +90,7 @@ mod tests {
             timer: Timer::new(),
             state: EmulatorState::Running,
             cycles: 0,
-            screen: Screen::new(400,400),
+            screen: Screen::new(400, 400),
         };
         {
             emu.cpu.bus.borrow_mut().write_slice(0x0010, &[1, 2, 3]);

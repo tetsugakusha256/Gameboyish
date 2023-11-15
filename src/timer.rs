@@ -17,6 +17,8 @@ impl Timer {
     }
     pub fn start() {}
     pub fn stop() {}
+    // TODO: maybe, since every action takes a multiple of 4 ticks make 
+    // everything take 4 time less tick and make tick 4 time more spaced
     pub fn check_next_tick(&self) -> bool {
         self.last_time.elapsed().as_nanos() >= self.delta_step
     }
