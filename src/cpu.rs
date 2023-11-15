@@ -1,9 +1,10 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::util::math_util::{
-    adc, addition, and, compare, complement, daa, dec, inc, or, res_bit, rotate_left,
-    rotate_left_carry, rotate_right, rotate_right_carry, sbc, set_bit, shift_left_arithmetic,
-    shift_right_arithmetic, shift_right_logical, subtraction, swap_nibble, test_bit, xor,
+    adc, addition, addition_16bit, and, compare, complement, daa, dec, inc, or, res_bit,
+    rotate_left, rotate_left_carry, rotate_right, rotate_right_carry, sbc, set_bit,
+    shift_left_arithmetic, shift_right_arithmetic, shift_right_logical, subtraction, swap_nibble,
+    test_bit, xor,
 };
 use crate::{
     bus::Bus,
@@ -21,6 +22,7 @@ pub struct CPU {
     cycles_to_wait: u64,
     instruction_dict_notprefixed: Vec<Instruction>,
     instruction_dict_prefixed: Vec<Instruction>,
+    ime: bool,
 }
 impl CPU {
     pub fn new(bus: Rc<RefCell<Bus>>) -> CPU {
@@ -31,8 +33,10 @@ impl CPU {
             cycles_since_last_cmd: 0,
             instruction_dict_notprefixed: load_json("opcodes_nopre.json").unwrap(),
             instruction_dict_prefixed: load_json("opcodes_pre.json").unwrap(),
+            ime: false,
         }
     }
+    pub fn stop(&self) {}
     // Check if I should do stuff and wait the proper amount of cycle
     // or wait and then do stuff
     pub fn next_tick(&mut self) {
@@ -111,19 +115,22 @@ impl CPU {
 
             NopreOpcodeMnemonics::JP => self.op_jump(instruction),
             NopreOpcodeMnemonics::JR => self.op_jump_rel(instruction),
-            NopreOpcodeMnemonics::CALL => todo!(),
-            NopreOpcodeMnemonics::RET => todo!(),
-            NopreOpcodeMnemonics::RETI => todo!(),
-            NopreOpcodeMnemonics::RST => todo!(),
+            NopreOpcodeMnemonics::CALL => self.op_call(instruction),
+            NopreOpcodeMnemonics::RET => self.op_ret(instruction),
+            NopreOpcodeMnemonics::RETI => {
+                self.ime = false;
+                self.op_ret(instruction);
+            }
+            NopreOpcodeMnemonics::RST => self.op_rst(instruction),
 
-            NopreOpcodeMnemonics::POP => todo!(),
-            NopreOpcodeMnemonics::PUSH => todo!(),
+            NopreOpcodeMnemonics::POP => self.op_pop(instruction),
+            NopreOpcodeMnemonics::PUSH => self.op_push(instruction),
 
-            NopreOpcodeMnemonics::NOP => todo!(),
-            NopreOpcodeMnemonics::EI => todo!(),
-            NopreOpcodeMnemonics::DI => todo!(),
-            NopreOpcodeMnemonics::HALT => todo!(),
-            NopreOpcodeMnemonics::STOP => todo!(),
+            NopreOpcodeMnemonics::NOP => (),
+            NopreOpcodeMnemonics::DI => self.ime = false,
+            NopreOpcodeMnemonics::EI => self.ime = true,
+            NopreOpcodeMnemonics::HALT => self.stop(),
+            NopreOpcodeMnemonics::STOP => self.stop(),
             NopreOpcodeMnemonics::INVALID => panic!("Illegal invalid instruction INVALID"),
         }
     }
@@ -155,12 +162,53 @@ impl CPU {
             PrefixOpcodeMnemonics::INVALID => panic!("Invalid prefixed mnemonic"),
         }
     }
+
+    fn op_dec_16bit(&mut self, instruction: Instruction) {
+        let target_operand = instruction.operands[0].name.clone().into();
+        let reg = &mut self.reg;
+        match target_operand {
+            NopreOperands::AF => reg.af -= 1,
+            NopreOperands::BC => reg.bc -= 1,
+            NopreOperands::DE => reg.de -= 1,
+            NopreOperands::HL => reg.hl -= 1,
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
+    }
+    fn op_inc_16bit(&mut self, instruction: Instruction) {
+        let target_operand = instruction.operands[0].name.clone().into();
+        let reg = &mut self.reg;
+        match target_operand {
+            NopreOperands::AF => reg.af += 1,
+            NopreOperands::BC => reg.bc += 1,
+            NopreOperands::DE => reg.de += 1,
+            NopreOperands::HL => reg.hl += 1,
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
+    }
+    fn op_add_16bit(&mut self, instruction: Instruction) {
+        let target_operand = instruction.operands[0].name.clone().into();
+        let reg = &mut self.reg;
+        let (result, n, h, c) = match target_operand {
+            NopreOperands::AF => addition_16bit(reg.hl, reg.af),
+            NopreOperands::BC => addition_16bit(reg.hl, reg.bc),
+            NopreOperands::DE => addition_16bit(reg.hl, reg.de),
+            NopreOperands::HL => addition_16bit(reg.hl, reg.hl),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
+        reg.hl = result;
+        reg.set_flag_n(n);
+        reg.set_flag_h(h);
+        reg.set_flag_c(c);
+    }
     fn op_inc_dec_8bit<F>(&mut self, a: NopreOperands, b: NopreOperands, f: F)
     where
         F: Fn(u8) -> (u8, bool, bool, bool),
     {
         let bus = self.bus.borrow_mut();
-        let mut reg = &mut self.reg;
+        let reg = &mut self.reg;
         let carry = reg.flag_c();
         let result = match b {
             NopreOperands::A
@@ -181,9 +229,67 @@ impl CPU {
         reg.set_a(new_a);
     }
 
+    //push
+    fn op_push(&mut self, instruction: Instruction) {
+        let mut bus = self.bus.borrow_mut();
+        let reg = &mut self.reg;
+        let address_operand: NopreOperands = instruction.operands[0].name.clone().into();
+        let target_reg = match address_operand {
+            NopreOperands::AF => reg.af,
+            NopreOperands::BC => reg.bc,
+            NopreOperands::DE => reg.de,
+            NopreOperands::HL => reg.hl,
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Error pop"),
+        };
+        reg.sp = reg.sp - 2;
+        bus.write_2_bytes_little_endian(target_reg, reg.pc);
+    }
+    //pop
+    fn op_pop(&mut self, instruction: Instruction) {
+        let bus = self.bus.borrow();
+        let reg = &mut self.reg;
+        let address_operand: NopreOperands = instruction.operands[0].name.clone().into();
+        let stack_value = bus.read_2_bytes_little_endian(reg.sp);
+        match address_operand {
+            NopreOperands::AF => reg.af = stack_value,
+            NopreOperands::BC => reg.bc = stack_value,
+            NopreOperands::DE => reg.de = stack_value,
+            NopreOperands::HL => reg.hl = stack_value,
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Error pop"),
+        };
+        reg.sp = reg.sp + 2;
+    }
+    //rst
+    fn op_rst(&mut self, instruction: Instruction) {
+        let mut bus = self.bus.borrow_mut();
+        let reg = &mut self.reg;
+        let address_operand: NopreOperands = instruction.operands[0].name.clone().into();
+        let address = match address_operand {
+            NopreOperands::X00 => 0x0000,
+            NopreOperands::X08 => 0x0008,
+            NopreOperands::X10 => 0x0010,
+            NopreOperands::X18 => 0x0018,
+            NopreOperands::X20 => 0x0028,
+            NopreOperands::X28 => 0x0028,
+            NopreOperands::X30 => 0x0030,
+            NopreOperands::X38 => 0x0038,
+            NopreOperands::INVALID => panic!(""),
+            _ => panic!(""),
+        };
+        //SP=SP-2 the stack goes 2 addresses down
+        //it's 2 because the stack is used to store 16bit value/address
+        //and the memory is 8bit
+        //call to nn, SP=SP-2, (SP)=PC, PC=nn
+        //TODO: CHECK HOW TO WRITE THE 2BYTES which endian to use?
+        reg.sp = reg.sp - 2;
+        bus.write_2_bytes_little_endian(address, reg.pc);
+        reg.pc = address;
+    }
     //call
     fn op_call(&mut self, instruction: Instruction) {
-        let bus = self.bus.borrow_mut();
+        let mut bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         let conditional = instruction.operands.len() == 2;
         // set to true so if not conditional call the last if is still visited
@@ -198,11 +304,16 @@ impl CPU {
                 _ => panic!("Invalid jump condition"),
             }
         }
-        //TODO: doubt about SP=SP-2
+        //SP=SP-2 the stack goes 2 addresses down
+        //it's 2 because the stack is used to store 16bit value/address
+        //and the memory is 8bit
         //call to nn, SP=SP-2, (SP)=PC, PC=nn
+        //TODO: CHECK HOW TO WRITE THE 2BYTES which endian to use?
         if condition {
-            reg.sp = reg.sp-2;
-            bus.write_2_bytes(reg.sp, reg.pc);
+            // moving stack pointer
+            reg.sp = reg.sp - 2;
+            bus.write_2_bytes_little_endian(reg.sp, reg.pc);
+            reg.pc = bus.get_a16_address(reg.pc);
         }
     }
     //jr
@@ -255,6 +366,26 @@ impl CPU {
             reg.pc = new_pc;
         }
     }
+    fn op_ret(&mut self, instruction: Instruction) {
+        let bus = self.bus.borrow_mut();
+        let reg = &mut self.reg;
+        let operand = instruction.operands.get(0);
+        let condition = match operand {
+            Some(operand_type) => match operand_type.name.clone().into() {
+                NopreOperands::Z => reg.flag_z(),
+                NopreOperands::NZ => !reg.flag_z(),
+                NopreOperands::C => reg.flag_c(),
+                NopreOperands::NC => !reg.flag_c(),
+                NopreOperands::INVALID => panic!("Invalid operand"),
+                _ => panic!("Missing operand for add 8bit?"),
+            },
+            None => true,
+        };
+        if condition {
+            reg.pc = bus.read_2_bytes_little_endian(reg.sp);
+            reg.sp += 2;
+        }
+    }
     fn op_cp_8bit(&mut self, a: NopreOperands, b: NopreOperands) {
         let bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
@@ -279,7 +410,7 @@ impl CPU {
         F: Fn(u8, u8, bool) -> (u8, bool, bool, bool, bool),
     {
         let bus = self.bus.borrow_mut();
-        let mut reg = &mut self.reg;
+        let reg = &mut self.reg;
         let a = reg.get_a();
         let carry = reg.flag_c();
         let result = match b {
@@ -304,7 +435,7 @@ impl CPU {
         F: Fn(u8, u8) -> (u8, bool, bool, bool, bool),
     {
         let bus = self.bus.borrow_mut();
-        let mut reg = &mut self.reg;
+        let reg = &mut self.reg;
         let a = reg.get_a();
         let result = match b {
             NopreOperands::A
@@ -322,25 +453,32 @@ impl CPU {
         reg.set_flags(z, n, h, c);
         reg.set_a(new_a);
     }
-    fn op_add_16bit(&mut self, instruction: Instruction, opcode: u8) {}
 
     // Filter ADD INC DEC that have both 8 and 16 bit version
     fn op_arith(&mut self, instruction: Instruction, opcode: u8) {
         //Dispatch 8bit and 16bit load instruction
         match opcode {
-            0x03 | 0x13 | 0x23 | 0x33 | 0x09 | 0x19 | 0x29 | 0x39 | 0x0b | 0x1b | 0x2b | 0x3b
-            | 0xe8 => self.op_arith_16bit(instruction, opcode),
+            0x03 | 0x13 | 0x23 | 0x33 | 0x09 | 0x19 | 0x29 | 0x39 | 0x0b | 0x1b | 0x2b | 0x3b => {
+                self.op_arith_16bit(instruction, opcode)
+            }
+            0xe8 => {
+               let reg = &mut self.reg; 
+               let bus = self.bus.borrow();
+               let (result, carry) = signed_addition(reg.sp,bus.read_byte(reg.pc));
+               reg.sp = result;
+               reg.set_flag_c(carry);
+            },
             _ => self.op_load_8bit(instruction),
         }
     }
 
     fn op_arith_16bit(&mut self, instruction: Instruction, opcode: u8) {
-        let mnemonic: NopreOpcodeMnemonics = instruction.mnemonic.into();
-        let value = match mnemonic {
-            NopreOpcodeMnemonics::ADD => todo!(),
-            NopreOpcodeMnemonics::INC => todo!(),
-            NopreOpcodeMnemonics::DEC => todo!(),
-            NopreOpcodeMnemonics::INVALID => todo!(),
+        let mnemonic: NopreOpcodeMnemonics = instruction.mnemonic.clone().into();
+        match mnemonic {
+            NopreOpcodeMnemonics::ADD => self.op_add_16bit(instruction),
+            NopreOpcodeMnemonics::INC => self.op_inc_16bit(instruction),
+            NopreOpcodeMnemonics::DEC => self.op_dec_16bit(instruction),
+            NopreOpcodeMnemonics::INVALID => panic!("INVALID operand arith_16bit"),
             _ => panic!("No operand match"),
         };
     }
@@ -350,7 +488,7 @@ impl CPU {
         let mnemonic: NopreOpcodeMnemonics = instruction.mnemonic.into();
         let a_type: NopreOperands = a.name.into();
         let b_type: NopreOperands = b.name.into();
-        let mut reg = &mut self.reg;
+        let reg = &mut self.reg;
 
         let value = match mnemonic {
             NopreOpcodeMnemonics::AND => self.op_add_sub_bit_8bit(a_type, b_type, and),
@@ -400,7 +538,7 @@ impl CPU {
         let (into, from) = instruction.operands_tuple().unwrap();
         let into_type: NopreOperands = into.name.into();
         let from_type: NopreOperands = from.name.into();
-        let bus = self.bus.borrow_mut();
+        let mut bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
 
         let value = match from_type {
@@ -431,7 +569,7 @@ impl CPU {
         };
         match into_type {
             // TODO: How to write 16bits in 8bits?
-            NopreOperands::a16 => todo!(),
+            NopreOperands::a16 => bus.write_a16(reg.pc, value),
             NopreOperands::BC => reg.bc = value,
             NopreOperands::SP => reg.sp = value,
             NopreOperands::DE => reg.de = value,
@@ -599,7 +737,7 @@ impl CPU {
     {
         let a = instruction.operands[0].name.clone().into();
         let bus = self.bus.borrow_mut();
-        let mut reg = &mut self.reg;
+        let reg = &mut self.reg;
         let result = match a {
             NopreOperands::A => f(reg.get_a()),
             NopreOperands::B => f(reg.get_b()),

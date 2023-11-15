@@ -1,4 +1,4 @@
-use super::u8_traits::{Nibbles, Bit};
+use super::u8_traits::{NibblesU8, Bit, NibblesU16};
 
 /// TODO: Check what should happen if a + b is neg
 /// TODO: are signed number ones complement or sign magnitude?
@@ -15,6 +15,12 @@ pub fn signed_addition(a: u16, b: u8) -> (u16, bool) {
     println!("sa:{},  sb:{}", signed_a, signed_b);
 
     (result as u16, overflow)
+}
+/// return (result, sub, halfcarry, carry)
+pub fn addition_16bit(a: u16, b: u16) -> (u16, bool, bool, bool) {
+    let (result, carry) = a.overflowing_add(b);
+    let halfcarry = (a.low_nibble() + b.low_nibble()) > 255;
+    (result, false, halfcarry, carry)
 }
 /// return (result, zero, sub, halfcarry, carry)
 pub fn addition(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
