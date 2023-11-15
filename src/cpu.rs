@@ -1,5 +1,10 @@
 use std::{cell::RefCell, rc::Rc};
 
+use crate::util::math_util::{
+    adc, addition, and, compare, complement, daa, dec, inc, or, res_bit, rotate_left,
+    rotate_left_carry, rotate_right, rotate_right_carry, sbc, set_bit, shift_left_arithmetic,
+    shift_right_arithmetic, shift_right_logical, subtraction, swap_nibble, test_bit, xor,
+};
 use crate::{
     bus::Bus,
     register::Registers,
@@ -49,6 +54,276 @@ impl CPU {
             );
         };
     }
+
+    fn opcode_noprefix_tick(&mut self, instruction: Instruction, opcode: u8) {
+        let mnemonic: NopreOpcodeMnemonics = instruction.mnemonic.clone().into();
+        let reg = &mut self.reg;
+        match mnemonic {
+            NopreOpcodeMnemonics::AND
+            | NopreOpcodeMnemonics::OR
+            | NopreOpcodeMnemonics::XOR
+            | NopreOpcodeMnemonics::ADD
+            | NopreOpcodeMnemonics::SUB
+            | NopreOpcodeMnemonics::ADC
+            | NopreOpcodeMnemonics::SBC
+            | NopreOpcodeMnemonics::DEC
+            | NopreOpcodeMnemonics::INC
+            | NopreOpcodeMnemonics::CP
+            | NopreOpcodeMnemonics::DAA
+            | NopreOpcodeMnemonics::CPL
+            | NopreOpcodeMnemonics::CCF
+            | NopreOpcodeMnemonics::SCF => self.op_arith_8bit(instruction, opcode),
+            NopreOpcodeMnemonics::IllegalD3
+            | NopreOpcodeMnemonics::IllegalDb
+            | NopreOpcodeMnemonics::IllegalDd
+            | NopreOpcodeMnemonics::IllegalE3
+            | NopreOpcodeMnemonics::IllegalE4
+            | NopreOpcodeMnemonics::IllegalEb
+            | NopreOpcodeMnemonics::IllegalEc
+            | NopreOpcodeMnemonics::IllegalEd
+            | NopreOpcodeMnemonics::IllegalF4
+            | NopreOpcodeMnemonics::IllegalFc
+            | NopreOpcodeMnemonics::IllegalFd => panic!("Illegal instruction"),
+            NopreOpcodeMnemonics::LD => self.op_load(instruction, opcode),
+            // Check
+            NopreOpcodeMnemonics::LDH => self.op_load(instruction, opcode),
+            NopreOpcodeMnemonics::PREFIX => self.opcode_prefixed_tick(instruction),
+            NopreOpcodeMnemonics::RLA => {
+                let (res, _, n, h, c) = rotate_left(reg.get_a());
+                reg.set_a(res);
+                reg.set_flags(false, n, h, c);
+            }
+            NopreOpcodeMnemonics::RLCA => {
+                let (res, _, n, h, c) = rotate_left_carry(reg.get_a(), reg.flag_c());
+                reg.set_a(res);
+                reg.set_flags(false, n, h, c);
+            }
+            NopreOpcodeMnemonics::RRA => {
+                let (res, _, n, h, c) = rotate_right(reg.get_a());
+                reg.set_a(res);
+                reg.set_flags(false, n, h, c);
+            }
+            NopreOpcodeMnemonics::RRCA => {
+                let (res, _, n, h, c) = rotate_right_carry(reg.get_a(), reg.flag_c());
+                reg.set_a(res);
+                reg.set_flags(false, n, h, c);
+            }
+
+            NopreOpcodeMnemonics::JP => self.op_jump(instruction),
+            NopreOpcodeMnemonics::JR => self.op_jump_rel(instruction),
+            NopreOpcodeMnemonics::CALL => todo!(),
+            NopreOpcodeMnemonics::RET => todo!(),
+            NopreOpcodeMnemonics::RETI => todo!(),
+            NopreOpcodeMnemonics::RST => todo!(),
+
+            NopreOpcodeMnemonics::POP => todo!(),
+            NopreOpcodeMnemonics::PUSH => todo!(),
+
+            NopreOpcodeMnemonics::NOP => todo!(),
+            NopreOpcodeMnemonics::EI => todo!(),
+            NopreOpcodeMnemonics::DI => todo!(),
+            NopreOpcodeMnemonics::HALT => todo!(),
+            NopreOpcodeMnemonics::STOP => todo!(),
+            NopreOpcodeMnemonics::INVALID => panic!("Illegal invalid instruction INVALID"),
+        }
+    }
+    fn opcode_prefixed_tick(&mut self, instruction: Instruction) {
+        let mnemonic: PrefixOpcodeMnemonics = instruction.mnemonic.clone().into();
+        match mnemonic {
+            PrefixOpcodeMnemonics::RLC => {
+                self.op_pre_1arg_with_carry(instruction, rotate_right_carry)
+            }
+            PrefixOpcodeMnemonics::RRC => {
+                self.op_pre_1arg_with_carry(instruction, rotate_left_carry)
+            }
+            PrefixOpcodeMnemonics::RL => self.op_pre_1arg_carryless(instruction, rotate_right),
+            PrefixOpcodeMnemonics::RR => self.op_pre_1arg_carryless(instruction, rotate_left),
+            PrefixOpcodeMnemonics::SLA => {
+                self.op_pre_1arg_carryless(instruction, shift_left_arithmetic)
+            }
+            PrefixOpcodeMnemonics::SRA => {
+                self.op_pre_1arg_carryless(instruction, shift_right_arithmetic)
+            }
+            PrefixOpcodeMnemonics::SRL => {
+                self.op_pre_1arg_carryless(instruction, shift_right_logical)
+            }
+            PrefixOpcodeMnemonics::SWAP => self.op_pre_1arg_carryless(instruction, swap_nibble),
+
+            PrefixOpcodeMnemonics::SET => self.op_pre_res_set(instruction, set_bit),
+            PrefixOpcodeMnemonics::RES => self.op_pre_res_set(instruction, res_bit),
+            PrefixOpcodeMnemonics::BIT => self.op_pre_bit(instruction, test_bit),
+            PrefixOpcodeMnemonics::INVALID => panic!("Invalid prefixed mnemonic"),
+        }
+    }
+    fn op_inc_dec_8bit<F>(&mut self, a: NopreOperands, b: NopreOperands, f: F)
+    where
+        F: Fn(u8) -> (u8, bool, bool, bool),
+    {
+        let bus = self.bus.borrow_mut();
+        let mut reg = &mut self.reg;
+        let carry = reg.flag_c();
+        let result = match b {
+            NopreOperands::A
+            | NopreOperands::B
+            | NopreOperands::C
+            | NopreOperands::D
+            | NopreOperands::E
+            | NopreOperands::H => f(reg.get(b)),
+            NopreOperands::HL => f(bus.read_byte(reg.hl)),
+            NopreOperands::n8 => f(bus.read_next_byte(reg.pc)),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
+        let (new_a, z, n, h) = result;
+        reg.set_flag_z(z);
+        reg.set_flag_n(n);
+        reg.set_flag_h(h);
+        reg.set_a(new_a);
+    }
+
+    //call
+    fn op_call(&mut self, instruction: Instruction) {
+        let bus = self.bus.borrow_mut();
+        let reg = &mut self.reg;
+        let conditional = instruction.operands.len() == 2;
+        // set to true so if not conditional call the last if is still visited
+        let mut condition = true;
+        if conditional {
+            let condition_operand = instruction.operands[0].name.clone().into();
+            condition = match condition_operand {
+                NopreOperands::Z => reg.flag_z(),
+                NopreOperands::NZ => !reg.flag_z(),
+                NopreOperands::C => reg.flag_c(),
+                NopreOperands::NC => !reg.flag_c(),
+                _ => panic!("Invalid jump condition"),
+            }
+        }
+        //TODO: doubt about SP=SP-2
+        //call to nn, SP=SP-2, (SP)=PC, PC=nn
+        if condition {
+            reg.sp = reg.sp-2;
+            bus.write_2_bytes(reg.sp, reg.pc);
+        }
+    }
+    //jr
+    fn op_jump_rel(&mut self, instruction: Instruction) {
+        let bus = self.bus.borrow_mut();
+        let reg = &mut self.reg;
+        let conditional = instruction.operands.len() == 2;
+        let mut condition = true;
+        if conditional {
+            let condition_operand = instruction.operands[0].name.clone().into();
+            condition = match condition_operand {
+                NopreOperands::Z => reg.flag_z(),
+                NopreOperands::NZ => !reg.flag_z(),
+                NopreOperands::C => reg.flag_c(),
+                NopreOperands::NC => !reg.flag_c(),
+                _ => panic!("Invalid jump condition"),
+            }
+        }
+        if condition {
+            let next_byte = bus.read_next_byte(reg.pc);
+            (reg.pc, _) = signed_addition(reg.pc, next_byte);
+        }
+    }
+    //jp and conditional jp
+    fn op_jump(&mut self, instruction: Instruction) {
+        let bus = self.bus.borrow_mut();
+        let reg = &mut self.reg;
+        let conditional = instruction.operands.len() == 2;
+        let mut i = 0;
+        let mut condition = true;
+        if conditional {
+            let condition_operand = instruction.operands[0].name.clone().into();
+            i = 1;
+            condition = match condition_operand {
+                NopreOperands::Z => reg.flag_z(),
+                NopreOperands::NZ => !reg.flag_z(),
+                NopreOperands::C => reg.flag_c(),
+                NopreOperands::NC => !reg.flag_c(),
+                _ => panic!("Invalid jump condition"),
+            }
+        }
+        let target = instruction.operands[i].name.clone().into();
+        let new_pc = match target {
+            NopreOperands::HL => reg.hl,
+            NopreOperands::a16 => bus.get_a16_address(reg.pc),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
+        if condition {
+            reg.pc = new_pc;
+        }
+    }
+    fn op_cp_8bit(&mut self, a: NopreOperands, b: NopreOperands) {
+        let bus = self.bus.borrow_mut();
+        let reg = &mut self.reg;
+        let a = reg.get_a();
+        let result = match b {
+            NopreOperands::A
+            | NopreOperands::B
+            | NopreOperands::C
+            | NopreOperands::D
+            | NopreOperands::E
+            | NopreOperands::H => compare(a, reg.get(b)),
+            NopreOperands::HL => compare(a, bus.read_byte(reg.hl)),
+            NopreOperands::n8 => compare(a, bus.read_next_byte(reg.pc)),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
+        let (z, n, h, c) = result;
+        reg.set_flags(z, n, h, c);
+    }
+    fn op_adc_sbc_8bit<F>(&mut self, a: NopreOperands, b: NopreOperands, f: F)
+    where
+        F: Fn(u8, u8, bool) -> (u8, bool, bool, bool, bool),
+    {
+        let bus = self.bus.borrow_mut();
+        let mut reg = &mut self.reg;
+        let a = reg.get_a();
+        let carry = reg.flag_c();
+        let result = match b {
+            NopreOperands::A
+            | NopreOperands::B
+            | NopreOperands::C
+            | NopreOperands::D
+            | NopreOperands::E
+            | NopreOperands::H => f(a, reg.get(b), carry),
+            NopreOperands::HL => f(a, bus.read_byte(reg.hl), carry),
+            NopreOperands::n8 => f(a, bus.read_next_byte(reg.pc), carry),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
+        let (new_a, z, n, h, c) = result;
+        reg.set_flags(z, n, h, c);
+        reg.set_a(new_a);
+    }
+
+    fn op_add_sub_bit_8bit<F>(&mut self, a: NopreOperands, b: NopreOperands, f: F)
+    where
+        F: Fn(u8, u8) -> (u8, bool, bool, bool, bool),
+    {
+        let bus = self.bus.borrow_mut();
+        let mut reg = &mut self.reg;
+        let a = reg.get_a();
+        let result = match b {
+            NopreOperands::A
+            | NopreOperands::B
+            | NopreOperands::C
+            | NopreOperands::D
+            | NopreOperands::E
+            | NopreOperands::H => f(a, reg.get(b)),
+            NopreOperands::HL => f(a, bus.read_byte(reg.hl)),
+            NopreOperands::n8 => f(a, bus.read_next_byte(reg.pc)),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
+        let (new_a, z, n, h, c) = result;
+        reg.set_flags(z, n, h, c);
+        reg.set_a(new_a);
+    }
+    fn op_add_16bit(&mut self, instruction: Instruction, opcode: u8) {}
+
     // Filter ADD INC DEC that have both 8 and 16 bit version
     fn op_arith(&mut self, instruction: Instruction, opcode: u8) {
         //Dispatch 8bit and 16bit load instruction
@@ -58,28 +333,7 @@ impl CPU {
             _ => self.op_load_8bit(instruction),
         }
     }
-    fn op_add_8bit(&mut self, a: NopreOperands, b: NopreOperands) {
-        let bus = self.bus.borrow_mut();
-        let mut reg = &mut self.reg;
-        let z: bool;
-        let n = 0;
-        let h: bool;
-        let c: bool;
-        let new_a = match b {
-            NopreOperands::A => reg.get_a() + reg.get_a(),
-            NopreOperands::B => reg.get_a() + reg.get_b(),
-            NopreOperands::C => reg.get_a() + reg.get_c(),
-            NopreOperands::D => reg.get_a() + reg.get_d(),
-            NopreOperands::E => reg.get_a() + reg.get_e(),
-            NopreOperands::H => reg.get_a() + reg.get_h(),
-            NopreOperands::HL => reg.get_a() + bus.read_byte(reg.hl),
-            NopreOperands::n8 => reg.get_a() + bus.read_next_byte(reg.pc),
-            NopreOperands::INVALID => panic!("Invalid operand"),
-            _ => panic!("Missing operand for add 8bit?"),
-        };
-        reg.set_a(new_a);
-    }
-    fn op_add_16bit(&mut self, instruction: Instruction, opcode: u8) {}
+
     fn op_arith_16bit(&mut self, instruction: Instruction, opcode: u8) {
         let mnemonic: NopreOpcodeMnemonics = instruction.mnemonic.into();
         let value = match mnemonic {
@@ -90,27 +344,44 @@ impl CPU {
             _ => panic!("No operand match"),
         };
     }
+
     fn op_arith_8bit(&mut self, instruction: Instruction, opcode: u8) {
         let (a, b) = instruction.operands_tuple().unwrap();
         let mnemonic: NopreOpcodeMnemonics = instruction.mnemonic.into();
         let a_type: NopreOperands = a.name.into();
         let b_type: NopreOperands = b.name.into();
+        let mut reg = &mut self.reg;
 
         let value = match mnemonic {
-            NopreOpcodeMnemonics::ADD => self.op_add_8bit(a_type, b_type),
-            NopreOpcodeMnemonics::ADC => todo!(),
-            NopreOpcodeMnemonics::AND => todo!(),
-            NopreOpcodeMnemonics::CCF => todo!(),
-            NopreOpcodeMnemonics::CP => todo!(),
-            NopreOpcodeMnemonics::CPL => todo!(),
-            NopreOpcodeMnemonics::DAA => todo!(),
-            NopreOpcodeMnemonics::DEC => todo!(),
-            NopreOpcodeMnemonics::INC => todo!(),
-            NopreOpcodeMnemonics::OR => todo!(),
-            NopreOpcodeMnemonics::SBC => todo!(),
-            NopreOpcodeMnemonics::SCF => todo!(),
-            NopreOpcodeMnemonics::SUB => todo!(),
-            NopreOpcodeMnemonics::XOR => todo!(),
+            NopreOpcodeMnemonics::AND => self.op_add_sub_bit_8bit(a_type, b_type, and),
+            NopreOpcodeMnemonics::OR => self.op_add_sub_bit_8bit(a_type, b_type, or),
+            NopreOpcodeMnemonics::XOR => self.op_add_sub_bit_8bit(a_type, b_type, xor),
+            NopreOpcodeMnemonics::ADD => self.op_add_sub_bit_8bit(a_type, b_type, addition),
+            NopreOpcodeMnemonics::SUB => self.op_add_sub_bit_8bit(a_type, b_type, subtraction),
+            NopreOpcodeMnemonics::ADC => self.op_adc_sbc_8bit(a_type, b_type, adc),
+            NopreOpcodeMnemonics::SBC => self.op_adc_sbc_8bit(a_type, b_type, sbc),
+            NopreOpcodeMnemonics::DEC => self.op_inc_dec_8bit(a_type, b_type, dec),
+            NopreOpcodeMnemonics::INC => self.op_inc_dec_8bit(a_type, b_type, inc),
+            NopreOpcodeMnemonics::CP => self.op_cp_8bit(a_type, b_type),
+            NopreOpcodeMnemonics::DAA => {
+                let (res, z, c) = daa(reg.get_a(), reg.flag_h(), reg.flag_c());
+                reg.set_a(res);
+                reg.set_flag_z(z);
+                reg.set_flag_c(c);
+            }
+            NopreOpcodeMnemonics::CPL => {
+                reg.set_a(complement(reg.get_a()));
+            }
+            NopreOpcodeMnemonics::CCF => {
+                reg.set_flag_n(false);
+                reg.set_flag_h(false);
+                reg.set_flag_c(reg.flag_c() ^ true);
+            }
+            NopreOpcodeMnemonics::SCF => {
+                reg.set_flag_n(false);
+                reg.set_flag_h(false);
+                reg.set_flag_c(true);
+            }
             _ => panic!("No operand match"),
         };
     }
@@ -140,9 +411,10 @@ impl CPU {
                 match opcode {
                     0xF8 => {
                         // TODO: flags h check
-                        let result = signed_addition(reg.sp, bus.read_next_byte(reg.pc));
-                        reg.set_flags(false, false, false, result.1);
-                        result.0
+                        let (result, c) = signed_addition(reg.sp, bus.read_next_byte(reg.pc));
+                        reg.set_flag_c(c);
+                        // reg.set_flags(false, false, false, result.1);
+                        result
                     }
                     0x08 => reg.sp,
                     _ => panic!("Impossible state"),
@@ -176,9 +448,13 @@ impl CPU {
         let reg = &mut self.reg;
 
         let value = match from_type {
-            NopreOperands::A => reg.get_a(),
+            NopreOperands::A
+            | NopreOperands::B
+            | NopreOperands::D
+            | NopreOperands::E
+            | NopreOperands::H
+            | NopreOperands::L => reg.get(from_type),
             NopreOperands::a8 => bus.read_next_byte(reg.pc),
-            NopreOperands::B => reg.get_b(),
             NopreOperands::BC => bus.read_byte(reg.bc),
             //check if c or [c] with bytes?,
             NopreOperands::C => {
@@ -188,10 +464,7 @@ impl CPU {
                     bus.read_byte(0xFF00 + reg.get_c() as u16)
                 }
             }
-            NopreOperands::D => reg.get_d(),
             NopreOperands::DE => bus.read_byte(reg.de),
-            NopreOperands::E => reg.get_e(),
-            NopreOperands::H => reg.get_h(),
             NopreOperands::HL => {
                 if from.increment.is_some() {
                     reg.hl_plus();
@@ -200,7 +473,6 @@ impl CPU {
                 }
                 bus.read_byte(reg.hl)
             }
-            NopreOperands::L => reg.get_l(),
             NopreOperands::n8 => bus.read_next_byte(reg.pc),
             NopreOperands::a16 => bus.get_a16_value(reg.pc),
             NopreOperands::INVALID => panic!("Invalid LD operands"),
@@ -245,73 +517,104 @@ impl CPU {
             _ => panic!("Missing operands"),
         }
     }
-    fn opcode_noprefix_tick(&mut self, instruction: Instruction, opcode: u8) {
-        let mnemonic: NopreOpcodeMnemonics = instruction.mnemonic.clone().into();
-        match mnemonic {
-            NopreOpcodeMnemonics::ADC => todo!(),
-            NopreOpcodeMnemonics::ADD => todo!(),
-            NopreOpcodeMnemonics::AND => todo!(),
-            NopreOpcodeMnemonics::CALL => todo!(),
-            NopreOpcodeMnemonics::CCF => todo!(),
-            NopreOpcodeMnemonics::CP => todo!(),
-            NopreOpcodeMnemonics::CPL => todo!(),
-            NopreOpcodeMnemonics::DAA => todo!(),
-            NopreOpcodeMnemonics::DEC => todo!(),
-            NopreOpcodeMnemonics::DI => todo!(),
-            NopreOpcodeMnemonics::EI => todo!(),
-            NopreOpcodeMnemonics::HALT => todo!(),
-            NopreOpcodeMnemonics::INC => todo!(),
-            NopreOpcodeMnemonics::IllegalD3 => todo!(),
-            NopreOpcodeMnemonics::IllegalDb => todo!(),
-            NopreOpcodeMnemonics::IllegalDd => todo!(),
-            NopreOpcodeMnemonics::IllegalE3 => todo!(),
-            NopreOpcodeMnemonics::IllegalE4 => todo!(),
-            NopreOpcodeMnemonics::IllegalEb => todo!(),
-            NopreOpcodeMnemonics::IllegalEc => todo!(),
-            NopreOpcodeMnemonics::IllegalEd => todo!(),
-            NopreOpcodeMnemonics::IllegalF4 => todo!(),
-            NopreOpcodeMnemonics::IllegalFc => todo!(),
-            NopreOpcodeMnemonics::IllegalFd => todo!(),
-            NopreOpcodeMnemonics::JP => todo!(),
-            NopreOpcodeMnemonics::JR => todo!(),
-            NopreOpcodeMnemonics::LD => self.op_load(instruction, opcode),
-            NopreOpcodeMnemonics::LDH => todo!(),
-            NopreOpcodeMnemonics::NOP => todo!(),
-            NopreOpcodeMnemonics::OR => todo!(),
-            NopreOpcodeMnemonics::POP => todo!(),
-            NopreOpcodeMnemonics::PREFIX => todo!(),
-            NopreOpcodeMnemonics::PUSH => todo!(),
-            NopreOpcodeMnemonics::RET => todo!(),
-            NopreOpcodeMnemonics::RETI => todo!(),
-            NopreOpcodeMnemonics::RLA => todo!(),
-            NopreOpcodeMnemonics::RLCA => todo!(),
-            NopreOpcodeMnemonics::RRA => todo!(),
-            NopreOpcodeMnemonics::RRCA => todo!(),
-            NopreOpcodeMnemonics::RST => todo!(),
-            NopreOpcodeMnemonics::SBC => todo!(),
-            NopreOpcodeMnemonics::SCF => todo!(),
-            NopreOpcodeMnemonics::STOP => todo!(),
-            NopreOpcodeMnemonics::SUB => todo!(),
-            NopreOpcodeMnemonics::XOR => todo!(),
-            NopreOpcodeMnemonics::INVALID => todo!(),
-        }
+    fn op_pre_bit<F>(&mut self, instruction: Instruction, f: F)
+    where
+        F: Fn(u8, u8) -> (bool, bool, bool),
+    {
+        let bit_number = match instruction.operands[0].name.clone().parse::<u8>() {
+            Ok(number) => number,
+            Err(_) => panic!("res/set instruction operand not a parsable number"),
+        };
+        let b = instruction.operands[1].name.clone().into();
+        let bus = self.bus.borrow_mut();
+        let reg = &mut self.reg;
+        let (z, n, h) = match b {
+            NopreOperands::A => f(reg.get_a(), bit_number),
+            NopreOperands::B => f(reg.get_b(), bit_number),
+            NopreOperands::C => f(reg.get_c(), bit_number),
+            NopreOperands::D => f(reg.get_d(), bit_number),
+            NopreOperands::E => f(reg.get_e(), bit_number),
+            NopreOperands::H => f(reg.get_h(), bit_number),
+            NopreOperands::L => f(reg.get_l(), bit_number),
+            NopreOperands::HL => f(bus.read_byte(reg.hl), bit_number),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for res/set ?"),
+        };
+        reg.set_flag_z(z);
+        reg.set_flag_n(n);
+        reg.set_flag_h(h);
     }
-    fn opcode_prefixed_tick(&mut self, instruction: Instruction) {
-        let mnemonic: PrefixOpcodeMnemonics = instruction.mnemonic.into();
-        match mnemonic {
-            PrefixOpcodeMnemonics::BIT => todo!(),
-            PrefixOpcodeMnemonics::INVALID => todo!(),
-            PrefixOpcodeMnemonics::RES => todo!(),
-            PrefixOpcodeMnemonics::RL => todo!(),
-            PrefixOpcodeMnemonics::RLC => todo!(),
-            PrefixOpcodeMnemonics::RR => todo!(),
-            PrefixOpcodeMnemonics::RRC => todo!(),
-            PrefixOpcodeMnemonics::SET => todo!(),
-            PrefixOpcodeMnemonics::SLA => todo!(),
-            PrefixOpcodeMnemonics::SRA => todo!(),
-            PrefixOpcodeMnemonics::SRL => todo!(),
-            PrefixOpcodeMnemonics::SWAP => todo!(),
-        }
+    fn op_pre_res_set<F>(&mut self, instruction: Instruction, f: F)
+    where
+        F: Fn(u8, u8) -> u8,
+    {
+        let bit_number = match instruction.operands[0].name.clone().parse::<u8>() {
+            Ok(number) => number,
+            Err(_) => panic!("res/set instruction operand not a parsable number"),
+        };
+        let b = instruction.operands[1].name.clone().into();
+        let bus = self.bus.borrow_mut();
+        let reg = &mut self.reg;
+        match b {
+            NopreOperands::A => f(reg.get_a(), bit_number),
+            NopreOperands::B => f(reg.get_b(), bit_number),
+            NopreOperands::C => f(reg.get_c(), bit_number),
+            NopreOperands::D => f(reg.get_d(), bit_number),
+            NopreOperands::E => f(reg.get_e(), bit_number),
+            NopreOperands::H => f(reg.get_h(), bit_number),
+            NopreOperands::L => f(reg.get_l(), bit_number),
+            NopreOperands::HL => f(bus.read_byte(reg.hl), bit_number),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for res/set ?"),
+        };
+    }
+    fn op_pre_1arg_with_carry<F>(&mut self, instruction: Instruction, f: F)
+    where
+        F: Fn(u8, bool) -> (u8, bool, bool, bool, bool),
+    {
+        let a = instruction.operands[0].name.clone().into();
+        let bus = self.bus.borrow_mut();
+        let reg = &mut self.reg;
+        let carry = reg.flag_c();
+        let result = match a {
+            NopreOperands::A => f(reg.get_a(), carry),
+            NopreOperands::B => f(reg.get_b(), carry),
+            NopreOperands::C => f(reg.get_c(), carry),
+            NopreOperands::D => f(reg.get_d(), carry),
+            NopreOperands::E => f(reg.get_e(), carry),
+            NopreOperands::H => f(reg.get_h(), carry),
+            NopreOperands::L => f(reg.get_l(), carry),
+            NopreOperands::HL => f(bus.read_byte(reg.hl), carry),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
+        let (new_a, z, n, h, c) = result;
+        reg.set_flags(z, n, h, c);
+        reg.set_a(new_a);
+    }
+    // prefixed instruction with only one arg (RLC, RRC...)
+    fn op_pre_1arg_carryless<F>(&mut self, instruction: Instruction, f: F)
+    where
+        F: Fn(u8) -> (u8, bool, bool, bool, bool),
+    {
+        let a = instruction.operands[0].name.clone().into();
+        let bus = self.bus.borrow_mut();
+        let mut reg = &mut self.reg;
+        let result = match a {
+            NopreOperands::A => f(reg.get_a()),
+            NopreOperands::B => f(reg.get_b()),
+            NopreOperands::C => f(reg.get_c()),
+            NopreOperands::D => f(reg.get_d()),
+            NopreOperands::E => f(reg.get_e()),
+            NopreOperands::H => f(reg.get_h()),
+            NopreOperands::L => f(reg.get_l()),
+            NopreOperands::HL => f(bus.read_byte(reg.hl)),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
+        let (new_a, z, n, h, c) = result;
+        reg.set_flags(z, n, h, c);
+        reg.set_a(new_a);
     }
 }
 fn get_a8_address(a8: u8) -> u16 {

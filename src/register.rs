@@ -1,5 +1,7 @@
 use std::u16::MAX as MAXu16;
 
+use crate::util::opcode_dict_util::NopreOperands;
+
 struct Register(u16);
 pub struct Registers {
     /// Acculmulator & Flag
@@ -81,7 +83,18 @@ impl Registers {
     pub fn set_l(&mut self, val: u8) {
         set_low(&mut self.hl, val);
     }
-
+    pub fn get(&self, target: NopreOperands) -> u8 {
+        match target {
+            NopreOperands::A => self.get_a(),
+            NopreOperands::B => self.get_b(),
+            NopreOperands::C => self.get_c(),
+            NopreOperands::D => self.get_d(),
+            NopreOperands::E => self.get_e(),
+            NopreOperands::H => self.get_h(),
+            NopreOperands::L => self.get_l(),
+            _ => panic!("Invalid 8bit reg")
+        }
+    }
     pub fn get_a(&self) -> u8 {
         return get_high(&self.af);
     }

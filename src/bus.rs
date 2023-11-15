@@ -1,4 +1,4 @@
-use crate::{ppu::VideoMemBlock, cartridge::load, util::error_type::Errors};
+use crate::{ppu::VideoMemBlock, cartridge::load, util::{error_type::Errors, u8_traits::{NibblesU16}}};
 
 pub struct Bus {
     pub data: [u8; 0x1_0000],
@@ -58,6 +58,14 @@ impl Bus {
     }
     pub fn write_byte(&mut self, address: u16, value: u8) {
         self.data[address as usize] = value;
+    }
+    //TODO: should the write happen in little endian?
+    //I feel like it should be the same as the load method
+    //used to retrieve them
+    pub fn write_2_bytes(&mut self, address:u16, value:u16){
+       let a = value.high_nibble();
+       let b = value.low_nibble();
+       self.write_slice(address, &[a,b]);
     }
     pub fn write_slice(&mut self, address: u16, slice: &[u8]) {
         let add = address as usize;

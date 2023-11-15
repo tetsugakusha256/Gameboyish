@@ -65,7 +65,7 @@ pub fn load_json(file_path: &str) -> Result<Vec<Instruction>, Errors> {
         }
     }
     for mnem in hash {
-        println!("{}", mnem.0);
+        // println!("{}", mnem.0);
     }
     println!("test :{:?}", vec_in_order[0xAF]);
     Ok(vec_in_order)
