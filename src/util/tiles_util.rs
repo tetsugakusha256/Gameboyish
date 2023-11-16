@@ -28,14 +28,14 @@ fn tile_fuse_byte(h: u8, l: u8) -> Vec<u8> {
 fn vram_to_vec(vram: Vec<u8>, tile_per_line: u8) -> TileVec {
     // buf of the vram size
     let tile_per_line = tile_per_line as usize;
-    let byte_per_line = tile_per_line * 2 ;
+    let byte_per_line = tile_per_line * 2;
     let mut buf: Vec<u32> = vec![0; VRAM_BYTE_SIZE];
     let mut test: Vec<u32> = vec![0; VRAM_BYTE_SIZE];
     for (i, byte) in vram.iter().enumerate() {
         let pair = byte_per_line * ((i / 2) % 8);
-        let tile = (2*(i / 16) + (i % 2))%(tile_per_line*2);
+        let tile = (2 * (i / 16) + (i % 2)) % (tile_per_line * 2);
         let block = (8 * byte_per_line as usize) * (i / (8 * byte_per_line as usize));
-        let offset = pair + tile+block;
+        let offset = pair + tile + block;
         // println!("{:?}", (i, block));
         if offset < VRAM_BYTE_SIZE {
             if offset == 16 {
