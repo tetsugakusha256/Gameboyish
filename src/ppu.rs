@@ -51,7 +51,16 @@ impl PPU {
             PPUModes::Mode1 => todo!(),
         }
     }
+    fn mode0(&self) {}
+    fn mode1(&self) {}
+    fn mode2(&self) {}
+    fn mode3(&self) {}
     fn block_memory(&self) {}
+    
+    fn tile_fuse_byte(first_byte:u8,second_byte:u8){
+        
+    }
 
     fn draw() {}
+
 }

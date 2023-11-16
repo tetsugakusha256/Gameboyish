@@ -60,9 +60,10 @@ impl Bus {
         Ok(())
     }
     pub fn read_byte(&self, address: u16) -> u8 {
-        if address == 0xFF44 {
-            return 0x90;
-        }
+        // temporary gamedoctor thing
+        // if address == 0xFF44 {
+        //     return 0x90;
+        // }
         let add = address as usize;
         return self.data[add];
     }
@@ -138,6 +139,14 @@ impl Bus {
         let data_slice = &mut self.data[add..add_end];
         data_slice.copy_from_slice(slice);
     }
+    // 0-7 line
+    fn get_tile_x_line_2bytes(&self, address: u16, line: u8) -> (u8, u8) {
+        if line > 7 {
+            panic!("Error");
+        }
+        let i = (line * 2) as u16;
+        (self.read_byte(address + i), self.read_byte(address + i + 1))
+    }
 }
 
 #[cfg(test)]
@@ -200,6 +209,12 @@ mod tests {
             &[0x31, 0xfe, 0xff, 0xaf, 0x21]
         );
         assert_eq!(bus.read_byte(0x00FF), 0x50);
+    }
+    #[test]
+    fn get_tile_x_line_2bytes_test() {
+        let mut bus = Bus::new();
+        bus.write_slice(0x1111, &[0x00, 0x10, 0x01, 0x00, 0x00, 0x33, 0x44]);
+        assert_eq!(bus.get_tile_x_line_2bytes(0x1111, 2), (0x00, 0x33));
     }
     #[test]
     fn get_a16_address_test() {

@@ -45,6 +45,7 @@ fn main() {
         state: EmulatorState::Running,
         cycles: 0,
         screen: Screen::new(144 * 6, 160 * 6),
+        debug_screen: Screen::new(144 * 6, 160 * 6),
     };
     emu.init();
 }

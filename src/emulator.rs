@@ -16,10 +16,12 @@ pub struct Emulator {
     pub state: EmulatorState,
     pub cycles: u64,
     pub screen: Screen,
+    pub debug_screen: Screen,
 }
 impl Emulator {
     pub fn init(&mut self) {
         self.screen.init();
+        self.debug_screen.init();
         self.bus.borrow_mut().init();
         self.bus
             .borrow_mut()
@@ -61,6 +63,7 @@ impl Emulator {
             self.cpu.next_tick();
             self.ppu.next_tick();
             self.screen.next_tick();
+            self.debug_screen.next_tick();
         }
         if self.cycles > 10000{
             self.stop();
@@ -91,6 +94,7 @@ mod tests {
             state: EmulatorState::Running,
             cycles: 0,
             screen: Screen::new(400, 400),
+            debug_screen: Screen::new(400, 400),
         };
         {
             emu.cpu.bus.borrow_mut().write_slice(0x0010, &[1, 2, 3]);

@@ -7,8 +7,10 @@ pub struct Timer {
 }
 impl Timer {
     pub fn new() -> Timer {
-        let frequency = 4194304u32;
-        // let frequency = 60u32;
+        // True value
+        // let frequency = 4194304u32;
+        // Slower value
+        let frequency = 60000u32;
         Timer {
             frequency,
             delta_step: Timer::step_length_nanosec(frequency),
