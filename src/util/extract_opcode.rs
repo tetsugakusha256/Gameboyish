@@ -28,7 +28,7 @@ pub struct Instruction {
 }
 impl Instruction {
     pub fn operands_tuple(&self) -> Option<(Operand, Operand)> {
-        if self.operands.len() == 2 {
+        if self.operands.len() >= 2 {
             return Some((self.operands[0].clone(), self.operands[1].clone()));
         }
         None

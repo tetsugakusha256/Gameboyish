@@ -62,7 +62,6 @@ impl Bus {
         return self.read_byte(0xFF00 + offset as u16);
     }
     pub fn read_byte(&self, address: u16) -> u8 {
-        println!("add: {:06X}", address);
         // temporary gamedoctor thing
         if address == 0xFF44 {
             return 0x90;

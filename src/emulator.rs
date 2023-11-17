@@ -32,9 +32,10 @@ impl Emulator {
         self.debug_screen.init("Debug");
         self.bus
             .borrow_mut()
-            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/01-special.gb")
+            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/08-misc instrs.gb")
             .unwrap();
-        self.bus.borrow_mut().init();
+        // Load boot rom
+        // self.bus.borrow_mut().init();
         // Activate logging
         self.cpu.init_with_log();
         self.start();
@@ -80,7 +81,13 @@ impl Emulator {
             ));
         }
         // self.screen.next_tick();
-        if self.cycles > 441800 {
+        // 5
+        // if self.cycles > 1761130 {
+        // 7
+        if self.cycles > 241011 {
+        //
+        // if self.cycles > 186640 {
+        // if self.cycles > 2541000 {
             self.stop();
         }
     }

@@ -3,10 +3,10 @@ use std::io::{self, Write};
 use std::{cell::RefCell, rc::Rc};
 
 use crate::util::math_util::{
-    adc, addition, addition_16bit, and, compare, complement, daa, dec, inc, or, res_bit,
+    adc, addition, addition_16bit, and, compare, complement, daa, dec, dec_16bit, inc, or, res_bit,
     rotate_left, rotate_left_carry, rotate_right, rotate_right_carry, sbc, set_bit,
     shift_left_arithmetic, shift_right_arithmetic, shift_right_logical, subtraction, swap_nibble,
-    test_bit, xor,
+    test_bit, xor, inc_16bit,
 };
 use crate::{
     bus::Bus,
@@ -222,11 +222,19 @@ impl CPU {
     fn op_dec_16bit(&mut self, instruction: Instruction) {
         let target_operand = instruction.operands[0].name.clone().into();
         let reg = &mut self.reg;
+        let new_value = match target_operand {
+            NopreOperands::AF => dec_16bit(reg.af),
+            NopreOperands::BC => dec_16bit(reg.bc),
+            NopreOperands::DE => dec_16bit(reg.de),
+            NopreOperands::HL => dec_16bit(reg.hl),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
         match target_operand {
-            NopreOperands::AF => reg.af -= 1,
-            NopreOperands::BC => reg.bc -= 1,
-            NopreOperands::DE => reg.de -= 1,
-            NopreOperands::HL => reg.hl -= 1,
+            NopreOperands::AF => reg.af = new_value,
+            NopreOperands::BC => reg.bc = new_value,
+            NopreOperands::DE => reg.de = new_value,
+            NopreOperands::HL => reg.hl = new_value,
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
         };
@@ -234,11 +242,19 @@ impl CPU {
     fn op_inc_16bit(&mut self, instruction: Instruction) {
         let target_operand = instruction.operands[0].name.clone().into();
         let reg = &mut self.reg;
+        let new_value = match target_operand {
+            NopreOperands::AF => inc_16bit(reg.af),
+            NopreOperands::BC => inc_16bit(reg.bc),
+            NopreOperands::DE => inc_16bit(reg.de),
+            NopreOperands::HL => inc_16bit(reg.hl),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
         match target_operand {
-            NopreOperands::AF => reg.af += 1,
-            NopreOperands::BC => reg.bc += 1,
-            NopreOperands::DE => reg.de += 1,
-            NopreOperands::HL => reg.hl += 1,
+            NopreOperands::AF => reg.af = new_value,
+            NopreOperands::BC => reg.bc = new_value,
+            NopreOperands::DE => reg.de = new_value,
+            NopreOperands::HL => reg.hl = new_value,
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
         };
@@ -467,9 +483,9 @@ impl CPU {
         let reg = &mut self.reg;
         let a = reg.get_a();
         let instruction_byte_size = instruction.bytes as u16;
-        println!("instruction:{}", instruction);
-        println!("A:{}", a);
-        println!("next byte:{}", bus.read_next_byte(reg.pc));
+        // println!("instruction:{}", instruction);
+        // println!("A:{}", a);
+        // println!("next byte:{}", bus.read_next_byte(reg.pc));
         let result = match target_operand {
             NopreOperands::A
             | NopreOperands::B
@@ -520,7 +536,6 @@ impl CPU {
         let bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         let a = reg.get_a();
-        println!("(hl){}", bus.read_byte(reg.hl));
         let result = match target_operand {
             NopreOperands::A
             | NopreOperands::B
@@ -619,6 +634,7 @@ impl CPU {
     fn op_load_16bit(&mut self, instruction: Instruction, opcode: u8) {
         //TODO: F8 3 operands
         //Check for 2 operands
+        println!("Instruction : {}", instruction);
         let (into, from) = instruction.operands_tuple().unwrap();
         let into_type: NopreOperands = into.name.into();
         let from_type: NopreOperands = from.name.into();
@@ -665,7 +681,6 @@ impl CPU {
         }
     }
     fn op_load_8bit(&mut self, instruction: Instruction) {
-        println!("instruction {}", instruction);
         let (into, from) = instruction.operands_tuple().unwrap();
         let into_type: NopreOperands = into.name.into();
         let from_type: NopreOperands = from.name.into();
@@ -901,9 +916,9 @@ impl CPU {
                     reg.sp,
                     reg.pc,
                     bus.read_byte(reg.pc),
-                    bus.read_byte(reg.pc + 1),
-                    bus.read_byte(reg.pc + 2),
-                    bus.read_byte(reg.pc + 3),
+                    bus.read_byte(reg.pc.wrapping_add(1)),
+                    bus.read_byte(reg.pc.wrapping_add(2)),
+                    bus.read_byte(reg.pc.wrapping_add(3)),
                 );
                 text = text.to_string().replace("0x", "");
                 text = text.to_uppercase();

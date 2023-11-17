@@ -19,8 +19,19 @@ pub fn signed_addition(a: u16, b: u8) -> (u16, bool) {
 pub fn addition_16bit(a: u16, b: u16) -> (u16, bool, bool, bool) {
     let (result, carry) = a.overflowing_add(b);
     let halfcarry = (a.low_12() + b.low_12()) > 0xFFF;
-    println!("a {} b {} halfcarry {}", a, b, halfcarry);
     (result, false, halfcarry, carry)
+}
+/// TODO: check when halfcarry ?
+/// return (result, zero, sub, halfcarry)
+pub fn dec_16bit(a: u16) -> u16 {
+    let b = 1u16;
+    let (result, half_carry) = a.overflowing_sub(b);
+    result
+}
+pub fn inc_16bit(a: u16) -> u16 {
+    let b = 1u16;
+    let (result, half_carry) = a.overflowing_add(b);
+    result
 }
 /// return (result, zero, sub, halfcarry, carry)
 pub fn addition(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
@@ -31,11 +42,8 @@ pub fn addition(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
 /// return (result, halfcarry, carry)
 /// TODO: check what halfcarry means here and if/how subtraction should overflow
 pub fn subtraction(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
-    println!("a {} b {}", a, b);
     let (result, carry) = a.overflowing_sub(b);
-    println!("res {} ", result);
     let (_, halfcarry) = a.low_nibble().overflowing_sub(b.low_nibble());
-    println!("halfcarry {} ", halfcarry);
     (result, result == 0, true, halfcarry, carry)
 }
 /// return (result, sub, zero, halfcarry, carry)
@@ -87,7 +95,6 @@ pub fn xor(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
 /// OR op
 /// res, z,n,h,c
 pub fn or(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
-    println!("a {} b {}", a, b);
     let res = a | b;
     (res, res == 0, false, false, false)
 }
@@ -124,7 +131,6 @@ pub fn swap_nibble(a: u8) -> (u8, bool, bool, bool, bool) {
 pub fn rotate_right_carry(a: u8, carry: bool) -> (u8, bool, bool, bool, bool) {
     let overflow = a.get_bit(0);
     let mut res = a.rotate_right(1);
-    println!("res {}", res);
     // set carry bit in it's place
     res.set_bit(7, carry);
     (res, res == 0, false, false, overflow)
