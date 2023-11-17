@@ -32,12 +32,13 @@ impl Emulator {
         self.debug_screen.init("Debug");
         self.bus
             .borrow_mut()
-            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/08-misc instrs.gb")
+            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/03-op sp,hl.gb")
             .unwrap();
         // Load boot rom
         // self.bus.borrow_mut().init();
         // Activate logging
-        self.cpu.init_with_log();
+        // self.cpu.init_with_log();
+        
         self.start();
     }
     pub fn start(&mut self) {
@@ -74,7 +75,7 @@ impl Emulator {
         self.ppu.next_tick();
         // self.bus.borrow_mut().write_slice(0x8000, &[0x56u8;8192]);
 
-        if self.cycles % 1000 == 0 {
+        if self.cycles % 100000 == 0 {
             self.debug_screen.next_tick(vram_to_screen(
                 Vec::from(self.bus.borrow().read_bytes_range(0x8000, 8192)),
                 16,
@@ -84,7 +85,9 @@ impl Emulator {
         // 5
         // if self.cycles > 1761130 {
         // 7
-        if self.cycles > 241011 {
+        // if self.cycles > 2410110 {
+        // if self.cycles > 1100000 {
+        if self.cycles > 675358 {
         //
         // if self.cycles > 186640 {
         // if self.cycles > 2541000 {

@@ -3,10 +3,10 @@ use std::io::{self, Write};
 use std::{cell::RefCell, rc::Rc};
 
 use crate::util::math_util::{
-    adc, addition, addition_16bit, and, compare, complement, daa, dec, dec_16bit, inc, or, res_bit,
-    rotate_left, rotate_left_carry, rotate_right, rotate_right_carry, sbc, set_bit,
+    adc, addition, addition_16bit, and, compare, complement, daa, dec, dec_16bit, inc, inc_16bit,
+    or, res_bit, rotate_left, rotate_left_carry, rotate_right, rotate_right_carry, sbc, set_bit,
     shift_left_arithmetic, shift_right_arithmetic, shift_right_logical, subtraction, swap_nibble,
-    test_bit, xor, inc_16bit,
+    test_bit, xor,
 };
 use crate::{
     bus::Bus,
@@ -223,7 +223,7 @@ impl CPU {
         let target_operand = instruction.operands[0].name.clone().into();
         let reg = &mut self.reg;
         let new_value = match target_operand {
-            NopreOperands::AF => dec_16bit(reg.af),
+            NopreOperands::SP => dec_16bit(reg.sp),
             NopreOperands::BC => dec_16bit(reg.bc),
             NopreOperands::DE => dec_16bit(reg.de),
             NopreOperands::HL => dec_16bit(reg.hl),
@@ -231,7 +231,7 @@ impl CPU {
             _ => panic!("Missing operand for add 8bit?"),
         };
         match target_operand {
-            NopreOperands::AF => reg.af = new_value,
+            NopreOperands::SP => reg.sp = new_value,
             NopreOperands::BC => reg.bc = new_value,
             NopreOperands::DE => reg.de = new_value,
             NopreOperands::HL => reg.hl = new_value,
@@ -240,10 +240,11 @@ impl CPU {
         };
     }
     fn op_inc_16bit(&mut self, instruction: Instruction) {
+        println!("instruction: {}", instruction);
         let target_operand = instruction.operands[0].name.clone().into();
         let reg = &mut self.reg;
         let new_value = match target_operand {
-            NopreOperands::AF => inc_16bit(reg.af),
+            NopreOperands::SP => inc_16bit(reg.sp),
             NopreOperands::BC => inc_16bit(reg.bc),
             NopreOperands::DE => inc_16bit(reg.de),
             NopreOperands::HL => inc_16bit(reg.hl),
@@ -251,7 +252,7 @@ impl CPU {
             _ => panic!("Missing operand for add 8bit?"),
         };
         match target_operand {
-            NopreOperands::AF => reg.af = new_value,
+            NopreOperands::SP => reg.sp = new_value,
             NopreOperands::BC => reg.bc = new_value,
             NopreOperands::DE => reg.de = new_value,
             NopreOperands::HL => reg.hl = new_value,
@@ -263,7 +264,7 @@ impl CPU {
         let target_operand = instruction.operands[1].name.clone().into();
         let reg = &mut self.reg;
         let (result, n, h, c) = match target_operand {
-            NopreOperands::AF => addition_16bit(reg.hl, reg.af),
+            NopreOperands::SP => addition_16bit(reg.hl, reg.sp),
             NopreOperands::BC => addition_16bit(reg.hl, reg.bc),
             NopreOperands::DE => addition_16bit(reg.hl, reg.de),
             NopreOperands::HL => addition_16bit(reg.hl, reg.hl),
@@ -421,7 +422,7 @@ impl CPU {
         }
         if condition {
             let next_byte = bus.read_next_byte(reg.pc);
-            let (next_pc, _) = signed_addition(reg.pc, next_byte);
+            let (next_pc, _, _) = signed_addition(reg.pc, next_byte);
             //TODO: I think its adding not from the pc position at the begining of the opreation
             // but bytes + after
             self.next_pc = next_pc + instruction.bytes as u16;
@@ -564,9 +565,11 @@ impl CPU {
             0xe8 => {
                 let reg = &mut self.reg;
                 let bus = self.bus.borrow();
-                let (result, carry) = signed_addition(reg.sp, bus.read_byte(reg.pc));
+                let (result, h, c) = signed_addition(reg.sp, bus.read_next_byte(reg.pc));
                 reg.sp = result;
-                reg.set_flag_c(carry);
+                reg.set_flag_n(false);
+                reg.set_flag_h(h);
+                reg.set_flag_c(c);
             }
             _ => self.op_arith_8bit(instruction),
         }
@@ -649,8 +652,10 @@ impl CPU {
                 match opcode {
                     0xF8 => {
                         // TODO: flags h check
-                        let (result, c) = signed_addition(reg.sp, bus.read_next_byte(reg.pc));
+                        let (result, h, c) = signed_addition(reg.sp, bus.read_next_byte(reg.pc));
                         reg.set_flag_c(c);
+                        reg.set_flag_h(h);
+                        reg.set_flag_n(false);
                         // reg.set_flags(false, false, false, result.1);
                         result
                     }

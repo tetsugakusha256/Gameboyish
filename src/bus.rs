@@ -70,8 +70,8 @@ impl Bus {
         return self.data[add];
     }
     pub fn read_byte_small_endian(&self, address: u16) -> u8 {
-        let high = address.high_nibble();
-        let low = address.high_nibble();
+        let high = address.high_8nibble();
+        let low = address.high_8nibble();
         let small_endian_address = ((low as u16) << 8) + (high as u16);
         if small_endian_address == 0xFF44 {
             return 0x90;
@@ -128,13 +128,13 @@ impl Bus {
     //I feel like it should be the same as the load method
     //used to retrieve them
     pub fn write_2_bytes_little_endian(&mut self, address: u16, value: u16) {
-        let high = value.high_nibble();
-        let low = value.low_nibble();
+        let high = value.high_8nibble();
+        let low = value.low_8nibble();
         self.write_slice(address, &[low, high]);
     }
     pub fn write_2_bytes_big_endian(&mut self, address: u16, value: u16) {
-        let high = value.high_nibble();
-        let low = value.low_nibble();
+        let high = value.high_8nibble();
+        let low = value.low_8nibble();
         self.write_slice(address, &[high, low]);
     }
     pub fn write_slice(&mut self, address: u16, slice: &[u8]) {

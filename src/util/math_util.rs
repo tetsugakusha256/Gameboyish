@@ -4,16 +4,21 @@ use super::u8_traits::{Bit, NibblesU16, NibblesU8};
 /// TODO: are signed number ones complement or sign magnitude?
 /// Add b interpreted as a signed int into a
 /// if the bool is true => overflow occured
-pub fn signed_addition(a: u16, b: u8) -> (u16, bool) {
+pub fn signed_addition(a: u16, b: u8) -> (u16, bool, bool) {
     let signed_b: i32 = b as i8 as i32;
     let signed_a: i32 = a as i32;
     let result = signed_a + signed_b;
-
-    let overflow = result < 0 || result > 0xFFFF;
+    let mut overflow = false;
+    println!("sa :{} sb :{} a:{} b:{}", signed_a, signed_b, a, b);
+    println!("lowa:{} lowb:{}", a.low_4nibble(), b.low_4nibble());
+    let half_carry = a.low_4nibble() + b.low_4nibble() >= 16;
+    if signed_b > 0 {
+        let result = a.wrapping_add(b as u16);
+        overflow = a.low_8nibble() as u16 + b as u16 >= 256;
+        return (result, half_carry, overflow);
+    }
     // Perform signed addition
-    let result = signed_a + signed_b;
-
-    (result as u16, overflow)
+    (result as u16, half_carry, overflow)
 }
 /// return (result, sub, halfcarry, carry)
 pub fn addition_16bit(a: u16, b: u16) -> (u16, bool, bool, bool) {
@@ -36,14 +41,14 @@ pub fn inc_16bit(a: u16) -> u16 {
 /// return (result, zero, sub, halfcarry, carry)
 pub fn addition(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
     let (result, carry) = a.overflowing_add(b);
-    let halfcarry = (a.low_nibble() + b.low_nibble()) > 15;
+    let halfcarry = (a.low_4nibble() + b.low_4nibble()) > 15;
     (result, result == 0, false, halfcarry, carry)
 }
 /// return (result, halfcarry, carry)
 /// TODO: check what halfcarry means here and if/how subtraction should overflow
 pub fn subtraction(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
     let (result, carry) = a.overflowing_sub(b);
-    let (_, halfcarry) = a.low_nibble().overflowing_sub(b.low_nibble());
+    let (_, halfcarry) = a.low_4nibble().overflowing_sub(b.low_4nibble());
     (result, result == 0, true, halfcarry, carry)
 }
 /// return (result, sub, zero, halfcarry, carry)
@@ -110,7 +115,7 @@ pub fn complement(a: u8) -> u8 {
 pub fn daa(a: u8, h: bool, c: bool) -> (u8, bool, bool) {
     let mut new_a = a;
     let high = a.high_nibble();
-    let low = a.low_nibble();
+    let low = a.low_4nibble();
     let mut c1 = false;
     let mut c2 = false;
     if h || (low > 9) {
@@ -125,7 +130,7 @@ pub fn daa(a: u8, h: bool, c: bool) -> (u8, bool, bool) {
 //TODO:use helper function to set bit
 
 pub fn swap_nibble(a: u8) -> (u8, bool, bool, bool, bool) {
-    let res = (a.low_nibble() << 4) + a.high_nibble();
+    let res = (a.low_4nibble() << 4) + a.high_nibble();
     (res, res == 0, false, false, false)
 }
 pub fn rotate_right_carry(a: u8, carry: bool) -> (u8, bool, bool, bool, bool) {
@@ -179,7 +184,7 @@ pub fn shift_left_arithmetic(a: u8) -> (u8, bool, bool, bool, bool) {
 // test result(z flag), n, h
 pub fn test_bit(byte: u8, bit: u8) -> (bool, bool, bool) {
     let res = byte.get_bit(bit);
-    (res, false, true)
+    (!res, false, true)
 }
 // set bit to 1
 pub fn set_bit(byte: u8, bit: u8) -> u8 {
