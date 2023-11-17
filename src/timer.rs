@@ -1,4 +1,7 @@
-use std::{f32, time::Instant};
+use std::{
+    f32, thread,
+    time::{Duration, Instant},
+};
 
 pub struct Timer {
     frequency: u32,
@@ -8,9 +11,9 @@ pub struct Timer {
 impl Timer {
     pub fn new() -> Timer {
         // True value
-        // let frequency = 4194304u32;
+        let frequency = 4194304u32;
         // Slower value
-        let frequency = 60000u32;
+        // let frequency = 60000u32;
         Timer {
             frequency,
             delta_step: Timer::step_length_nanosec(frequency),
@@ -19,7 +22,14 @@ impl Timer {
     }
     pub fn start() {}
     pub fn stop() {}
-    // TODO: maybe, since every action takes a multiple of 4 ticks make 
+    pub fn wait_till_next_tick(&self) {
+        let elapsed_time = self.last_time.elapsed().as_nanos();
+        if elapsed_time < self.delta_step {
+            let sleep_time = self.delta_step - elapsed_time;
+            thread::sleep(Duration::from_nanos(sleep_time as u64));
+        }
+    }
+    // TODO: maybe, since every action takes a multiple of 4 ticks make
     // everything take 4 time less tick and make tick 4 time more spaced
     pub fn check_next_tick(&self) -> bool {
         self.last_time.elapsed().as_nanos() >= self.delta_step

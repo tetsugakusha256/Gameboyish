@@ -41,6 +41,7 @@ impl From<String> for PreOperands {
         }
     }
 }
+#[allow(non_camel_case_types)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum NopreOperands {
     X00,

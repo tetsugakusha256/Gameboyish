@@ -5,23 +5,20 @@ use super::u8_traits::{NibblesU8, Bit, NibblesU16};
 /// Add b interpreted as a signed int into a
 /// if the bool is true => overflow occured
 pub fn signed_addition(a: u16, b: u8) -> (u16, bool) {
-    println!("before {}", b);
     let signed_b: i32 = b as i8 as i32;
     let signed_a: i32 = a as i32;
-    println!("after {}", signed_b);
     let result = signed_a + signed_b;
 
     let overflow = result < 0 || result > 0xFFFF;
     // Perform signed addition
     let result = signed_a + signed_b;
-    println!("sa:{},  sb:{}", signed_a, signed_b);
 
     (result as u16, overflow)
 }
 /// return (result, sub, halfcarry, carry)
 pub fn addition_16bit(a: u16, b: u16) -> (u16, bool, bool, bool) {
     let (result, carry) = a.overflowing_add(b);
-    let halfcarry = (a.low_nibble() + b.low_nibble()) > 255;
+    let halfcarry = (a.low_nibble() as u16 + b.low_nibble() as u16) > 255;
     (result, false, halfcarry, carry)
 }
 /// return (result, zero, sub, halfcarry, carry)
@@ -33,8 +30,11 @@ pub fn addition(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
 /// return (result, halfcarry, carry)
 /// TODO: check what halfcarry means here and if/how subtraction should overflow
 pub fn subtraction(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
+    println!("a {} b {}", a,b);
     let (result, carry) = a.overflowing_sub(b);
+    println!("res {} ", result);
     let (_, halfcarry) = a.low_nibble().overflowing_sub(b.low_nibble());
+    println!("halfcarry {} ", halfcarry);
     (result, result == 0, true, halfcarry, carry)
 }
 /// return (result, sub, zero, halfcarry, carry)
@@ -86,6 +86,7 @@ pub fn xor(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
 /// OR op
 /// res, z,n,h,c
 pub fn or(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
+    println!("a {} b {}", a, b);
     let res = a | b;
     (res, res == 0, false, false, false)
 }

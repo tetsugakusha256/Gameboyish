@@ -242,7 +242,7 @@ impl CPU {
         };
     }
     fn op_add_16bit(&mut self, instruction: Instruction) {
-        let target_operand = instruction.operands[0].name.clone().into();
+        let target_operand = instruction.operands[1].name.clone().into();
         let reg = &mut self.reg;
         let (result, n, h, c) = match target_operand {
             NopreOperands::AF => addition_16bit(reg.hl, reg.af),
@@ -262,7 +262,6 @@ impl CPU {
         F: Fn(u8) -> (u8, bool, bool, bool),
     {
         let target_operand = instruction.operands[0].name.clone().into();
-        println!("INC 8bit {:?}", target_operand);
         let mut bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         let result = match target_operand {
@@ -271,6 +270,7 @@ impl CPU {
             | NopreOperands::C
             | NopreOperands::D
             | NopreOperands::E
+            | NopreOperands::L
             | NopreOperands::H => f(reg.get(&target_operand)),
             NopreOperands::HL => f(bus.read_byte(reg.hl)),
             NopreOperands::n8 => f(bus.read_next_byte(reg.pc)),
@@ -287,6 +287,7 @@ impl CPU {
             | NopreOperands::C
             | NopreOperands::D
             | NopreOperands::E
+            | NopreOperands::L
             | NopreOperands::H => reg.set_byte_reg(&target_operand, new_value),
             NopreOperands::HL => bus.write_byte(reg.hl, new_value),
             NopreOperands::n8 => bus.write_next_byte(reg.pc, new_value),
@@ -309,7 +310,7 @@ impl CPU {
             _ => panic!("Error pop"),
         };
         reg.sp = reg.sp - 2;
-        bus.write_2_bytes_little_endian(target_reg, reg.pc);
+        bus.write_2_bytes_little_endian(reg.sp, target_reg);
     }
     //pop
     fn op_pop(&mut self, instruction: Instruction) {
@@ -377,14 +378,15 @@ impl CPU {
         //TODO: CHECK HOW TO WRITE THE 2BYTES which endian to use?
         if condition {
             // moving stack pointer
+            // OK !
+            let instruction_byte_size = instruction.bytes;
             reg.sp = reg.sp - 2;
-            bus.write_2_bytes_little_endian(reg.sp, reg.pc);
+            bus.write_2_bytes_little_endian(reg.sp, reg.pc + instruction_byte_size as u16);
             self.next_pc = bus.get_a16_address(reg.pc);
         }
     }
     //jr
     fn op_jump_rel(&mut self, instruction: Instruction) {
-        println!("JUMP REL: {:?}", instruction);
         let bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         let conditional = instruction.operands.len() == 2;
@@ -400,7 +402,6 @@ impl CPU {
             }
         }
         if condition {
-            println!("Conditional jump happening");
             let next_byte = bus.read_next_byte(reg.pc);
             let (next_pc, _) = signed_addition(reg.pc, next_byte);
             //TODO: I think its adding not from the pc position at the begining of the opreation
@@ -410,7 +411,6 @@ impl CPU {
     }
     //jp and conditional jp
     fn op_jump(&mut self, instruction: Instruction) {
-        println!("JUMP: {:?}", instruction);
         let bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         let conditional = instruction.operands.len() == 2;
@@ -455,14 +455,19 @@ impl CPU {
         };
         if condition {
             self.next_pc = bus.read_2_bytes_little_endian(reg.sp);
+            // OK
             reg.sp += 2;
         }
     }
     fn op_cp_8bit(&mut self, instruction: Instruction) {
-        let target_operand = instruction.operands[0].name.clone().into();
+        let target_operand = instruction.operands[1].name.clone().into();
         let bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         let a = reg.get_a();
+        let instruction_byte_size = instruction.bytes as u16;
+        println!("instruction:{}",instruction);
+        println!("A:{}",a);
+        println!("next byte:{}",bus.read_next_byte(reg.pc));
         let result = match target_operand {
             NopreOperands::A
             | NopreOperands::B
@@ -482,7 +487,7 @@ impl CPU {
     where
         F: Fn(u8, u8, bool) -> (u8, bool, bool, bool, bool),
     {
-        let target_operand = instruction.operands[0].name.clone().into();
+        let target_operand = instruction.operands[1].name.clone().into();
         let bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         let a = reg.get_a();
@@ -493,6 +498,7 @@ impl CPU {
             | NopreOperands::C
             | NopreOperands::D
             | NopreOperands::E
+            | NopreOperands::L
             | NopreOperands::H => f(a, reg.get(&target_operand), carry),
             NopreOperands::HL => f(a, bus.read_byte(reg.hl), carry),
             NopreOperands::n8 => f(a, bus.read_next_byte(reg.pc), carry),
@@ -508,7 +514,7 @@ impl CPU {
     where
         F: Fn(u8, u8) -> (u8, bool, bool, bool, bool),
     {
-        let target_operand = instruction.operands[0].name.clone().into();
+        let target_operand = instruction.operands[1].name.clone().into();
         let bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         let a = reg.get_a();
@@ -518,6 +524,7 @@ impl CPU {
             | NopreOperands::C
             | NopreOperands::D
             | NopreOperands::E
+            | NopreOperands::L
             | NopreOperands::H => f(a, reg.get(&target_operand)),
             NopreOperands::HL => f(a, bus.read_byte(reg.hl)),
             NopreOperands::n8 => f(a, bus.read_next_byte(reg.pc)),
@@ -651,11 +658,13 @@ impl CPU {
         }
     }
     fn op_load_8bit(&mut self, instruction: Instruction) {
+        println!("instruction {}",instruction);
         let (into, from) = instruction.operands_tuple().unwrap();
         let into_type: NopreOperands = into.name.into();
         let from_type: NopreOperands = from.name.into();
         let mut bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
+        let instruction_byte_size = instruction.bytes as u16;
 
         let value = match from_type {
             NopreOperands::A
@@ -664,7 +673,9 @@ impl CPU {
             | NopreOperands::E
             | NopreOperands::H
             | NopreOperands::L => reg.get(&from_type),
-            NopreOperands::a8 => bus.read_next_byte(reg.pc),
+            NopreOperands::a8 => bus.read_next_byte(reg.pc + instruction_byte_size),
+            // WARN: check a8 not what is described
+            // NopreOperands::a8 => bus.read_a8(bus.read_byte(reg.pc + instruction_byte_size)),
             NopreOperands::BC => bus.read_byte(reg.bc),
             //check if c or [c] with bytes?,
             NopreOperands::C => {
@@ -700,28 +711,28 @@ impl CPU {
                 bus.write_byte(a8, value)
             }
             NopreOperands::B => reg.set_b(value),
-            NopreOperands::BC => bus.write_byte(reg.bc, value),
             //check if c or [c] with bytes?,
             NopreOperands::C => {
-                if from.immediate {
+                if into.immediate {
                     reg.set_c(value)
                 } else {
                     bus.write_byte(0xFF00 + reg.get_c() as u16, value)
                 }
             }
             NopreOperands::D => reg.set_d(value),
-            NopreOperands::DE => bus.write_byte(reg.bc, value),
             NopreOperands::E => reg.set_e(value),
             NopreOperands::H => reg.set_h(value),
             NopreOperands::HL => {
                 // TODO: extract logic
-                if from.increment.is_some() {
+                if into.increment.is_some() {
                     reg.hl_plus();
-                } else if from.decrement.is_some() {
+                } else if into.decrement.is_some() {
                     reg.hl_minus();
                 }
                 bus.write_byte(reg.hl, value)
             }
+            NopreOperands::BC => bus.write_byte(reg.bc, value),
+            NopreOperands::DE => bus.write_byte(reg.de, value),
             NopreOperands::L => reg.set_l(value),
             NopreOperands::INVALID => panic!("Invalid operands"),
 

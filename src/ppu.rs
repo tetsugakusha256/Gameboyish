@@ -2,7 +2,7 @@ use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use crate::{
     bus::Bus,
-    screen::{Screen, GAMEBOY_SCREEN_HEIGHT, GAMEBOY_SCREEN_WIDTH},
+    windows::game_window::{GameWindow, GAMEBOY_SCREEN_HEIGHT, GAMEBOY_SCREEN_WIDTH},
 };
 
 pub enum PPUModes {
@@ -57,9 +57,6 @@ impl PPU {
     fn mode3(&self) {}
     fn block_memory(&self) {}
     
-    fn tile_fuse_byte(first_byte:u8,second_byte:u8){
-        
-    }
 
     fn draw() {}
 

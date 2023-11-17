@@ -1,7 +1,6 @@
 use crate::{
-    cartridge::load,
     ppu::VideoMemBlock,
-    util::{error_type::Errors, u8_traits::NibblesU16},
+    util::{cartridge_util::load, error_type::Errors, u8_traits::NibblesU16},
 };
 
 pub struct Bus {
@@ -56,14 +55,17 @@ impl Bus {
     }
     fn load_file(&mut self, path: &str, address: u16) -> Result<(), Errors> {
         let data = load(path)?;
-        self.write_slice(address, data.as_slice());
+        self.write_slice(address, data.0.as_slice());
         Ok(())
+    }
+    pub fn read_a8(&self, offset: u8) -> u8 {
+        return self.data[0xFF00 + offset as usize];
     }
     pub fn read_byte(&self, address: u16) -> u8 {
         // temporary gamedoctor thing
-        // if address == 0xFF44 {
-        //     return 0x90;
-        // }
+        if address == 0xFF44 {
+            return 0x90;
+        }
         let add = address as usize;
         return self.data[add];
     }
@@ -129,6 +131,11 @@ impl Bus {
         let high = value.high_nibble();
         let low = value.low_nibble();
         self.write_slice(address, &[low, high]);
+    }
+    pub fn write_2_bytes_big_endian(&mut self, address: u16, value: u16) {
+        let high = value.high_nibble();
+        let low = value.low_nibble();
+        self.write_slice(address, &[high, low]);
     }
     pub fn write_slice(&mut self, address: u16, slice: &[u8]) {
         let add = address as usize;
