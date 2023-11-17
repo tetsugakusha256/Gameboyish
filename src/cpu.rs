@@ -68,7 +68,9 @@ impl CPU {
             // self.cycles_since_last_cmd = 0;
             // Run next command
             let opcode = self.bus.borrow().read_byte(self.reg.pc);
-            self.log_state_to_file();
+            if self.log_buffer.is_some() {
+                self.log_state_to_file();
+            }
             println!(
                 "Running code: {:#02x}, cycle: {}",
                 opcode, self.cycles_since_last_cmd
@@ -146,23 +148,23 @@ impl CPU {
             // Check
             NopreOpcodeMnemonics::LDH => self.op_load(instruction, opcode),
             NopreOpcodeMnemonics::PREFIX => self.opcode_prefixed_tick(instruction),
-            NopreOpcodeMnemonics::RLA => {
-                let (res, _, n, h, c) = rotate_left(reg.get_a());
-                reg.set_a(res);
-                reg.set_flags(false, n, h, c);
-            }
             NopreOpcodeMnemonics::RLCA => {
-                let (res, _, n, h, c) = rotate_left_carry(reg.get_a(), reg.flag_c());
+                let (res, z, n, h, c) = rotate_left(reg.get_a());
                 reg.set_a(res);
                 reg.set_flags(false, n, h, c);
             }
-            NopreOpcodeMnemonics::RRA => {
-                let (res, _, n, h, c) = rotate_right(reg.get_a());
+            NopreOpcodeMnemonics::RLA => {
+                let (res, z, n, h, c) = rotate_left_carry(reg.get_a(), reg.flag_c());
                 reg.set_a(res);
                 reg.set_flags(false, n, h, c);
             }
             NopreOpcodeMnemonics::RRCA => {
-                let (res, _, n, h, c) = rotate_right_carry(reg.get_a(), reg.flag_c());
+                let (res, z, n, h, c) = rotate_right(reg.get_a());
+                reg.set_a(res);
+                reg.set_flags(false, n, h, c);
+            }
+            NopreOpcodeMnemonics::RRA => {
+                let (res, z, n, h, c) = rotate_right_carry(reg.get_a(), reg.flag_c());
                 reg.set_a(res);
                 reg.set_flags(false, n, h, c);
             }
@@ -191,14 +193,14 @@ impl CPU {
     fn opcode_prefixed_tick(&mut self, instruction: Instruction) {
         let mnemonic: PrefixOpcodeMnemonics = instruction.mnemonic.clone().into();
         match mnemonic {
-            PrefixOpcodeMnemonics::RLC => {
-                self.op_pre_1arg_with_carry(instruction, rotate_right_carry)
-            }
-            PrefixOpcodeMnemonics::RRC => {
+            PrefixOpcodeMnemonics::RLC => self.op_pre_1arg_carryless(instruction, rotate_right),
+            PrefixOpcodeMnemonics::RRC => self.op_pre_1arg_carryless(instruction, rotate_left),
+            PrefixOpcodeMnemonics::RL => {
                 self.op_pre_1arg_with_carry(instruction, rotate_left_carry)
             }
-            PrefixOpcodeMnemonics::RL => self.op_pre_1arg_carryless(instruction, rotate_right),
-            PrefixOpcodeMnemonics::RR => self.op_pre_1arg_carryless(instruction, rotate_left),
+            PrefixOpcodeMnemonics::RR => {
+                self.op_pre_1arg_with_carry(instruction, rotate_right_carry)
+            }
             PrefixOpcodeMnemonics::SLA => {
                 self.op_pre_1arg_carryless(instruction, shift_left_arithmetic)
             }
@@ -307,7 +309,7 @@ impl CPU {
             NopreOperands::DE => reg.de,
             NopreOperands::HL => reg.hl,
             NopreOperands::INVALID => panic!("Invalid operand"),
-            _ => panic!("Error pop"),
+            _ => panic!("Error push"),
         };
         reg.sp = reg.sp - 2;
         bus.write_2_bytes_little_endian(reg.sp, target_reg);
@@ -465,9 +467,9 @@ impl CPU {
         let reg = &mut self.reg;
         let a = reg.get_a();
         let instruction_byte_size = instruction.bytes as u16;
-        println!("instruction:{}",instruction);
-        println!("A:{}",a);
-        println!("next byte:{}",bus.read_next_byte(reg.pc));
+        println!("instruction:{}", instruction);
+        println!("A:{}", a);
+        println!("next byte:{}", bus.read_next_byte(reg.pc));
         let result = match target_operand {
             NopreOperands::A
             | NopreOperands::B
@@ -518,6 +520,7 @@ impl CPU {
         let bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         let a = reg.get_a();
+        println!("(hl){}", bus.read_byte(reg.hl));
         let result = match target_operand {
             NopreOperands::A
             | NopreOperands::B
@@ -588,6 +591,8 @@ impl CPU {
             }
             NopreOpcodeMnemonics::CPL => {
                 reg.set_a(complement(reg.get_a()));
+                reg.set_flag_n(true);
+                reg.set_flag_h(true);
             }
             NopreOpcodeMnemonics::CCF => {
                 reg.set_flag_n(false);
@@ -648,7 +653,9 @@ impl CPU {
         };
         match into_type {
             // TODO: How to write 16bits in 8bits?
+            // WARN: not used at least before cycle 32535
             NopreOperands::a16 => bus.write_a16(reg.pc, value),
+
             NopreOperands::BC => reg.bc = value,
             NopreOperands::SP => reg.sp = value,
             NopreOperands::DE => reg.de = value,
@@ -658,7 +665,7 @@ impl CPU {
         }
     }
     fn op_load_8bit(&mut self, instruction: Instruction) {
-        println!("instruction {}",instruction);
+        println!("instruction {}", instruction);
         let (into, from) = instruction.operands_tuple().unwrap();
         let into_type: NopreOperands = into.name.into();
         let from_type: NopreOperands = from.name.into();
@@ -673,9 +680,9 @@ impl CPU {
             | NopreOperands::E
             | NopreOperands::H
             | NopreOperands::L => reg.get(&from_type),
-            NopreOperands::a8 => bus.read_next_byte(reg.pc + instruction_byte_size),
+            // NopreOperands::a8 => bus.read_next_byte(reg.pc + instruction_byte_size),
             // WARN: check a8 not what is described
-            // NopreOperands::a8 => bus.read_a8(bus.read_byte(reg.pc + instruction_byte_size)),
+            NopreOperands::a8 => bus.read_a8(bus.read_next_byte(reg.pc)),
             NopreOperands::BC => bus.read_byte(reg.bc),
             //check if c or [c] with bytes?,
             NopreOperands::C => {
@@ -687,13 +694,13 @@ impl CPU {
             }
             NopreOperands::DE => bus.read_byte(reg.de),
             NopreOperands::HL => {
-                let hl = reg.hl;
+                let hl_mem = reg.hl.clone();
                 if from.increment.is_some() {
                     reg.hl_plus();
                 } else if from.decrement.is_some() {
                     reg.hl_minus();
                 }
-                bus.read_byte(hl)
+                bus.read_byte(hl_mem)
             }
             NopreOperands::n8 => bus.read_next_byte(reg.pc),
             NopreOperands::a16 => bus.get_a16_value(reg.pc),
@@ -702,13 +709,15 @@ impl CPU {
         };
         match into_type {
             NopreOperands::A => reg.set_a(value),
+            // Ok!
             NopreOperands::a16 => {
                 let a16 = bus.get_a16_address(reg.pc);
                 bus.write_byte(a16, value)
             }
+            // Ok!
             NopreOperands::a8 => {
-                let a8 = get_a8_address(bus.read_next_byte(reg.pc));
-                bus.write_byte(a8, value)
+                let a8_add = get_a8_address(bus.read_next_byte(reg.pc));
+                bus.write_byte(a8_add, value)
             }
             NopreOperands::B => reg.set_b(value),
             //check if c or [c] with bytes?,
@@ -724,12 +733,12 @@ impl CPU {
             NopreOperands::H => reg.set_h(value),
             NopreOperands::HL => {
                 // TODO: extract logic
+                bus.write_byte(reg.hl, value);
                 if into.increment.is_some() {
                     reg.hl_plus();
                 } else if into.decrement.is_some() {
                     reg.hl_minus();
                 }
-                bus.write_byte(reg.hl, value)
             }
             NopreOperands::BC => bus.write_byte(reg.bc, value),
             NopreOperands::DE => bus.write_byte(reg.de, value),
@@ -794,11 +803,11 @@ impl CPU {
     where
         F: Fn(u8, bool) -> (u8, bool, bool, bool, bool),
     {
-        let a = instruction.operands[0].name.clone().into();
-        let bus = self.bus.borrow_mut();
+        let operand_type = instruction.operands[0].name.clone().into();
+        let mut bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         let carry = reg.flag_c();
-        let result = match a {
+        let result = match operand_type {
             NopreOperands::A => f(reg.get_a(), carry),
             NopreOperands::B => f(reg.get_b(), carry),
             NopreOperands::C => f(reg.get_c(), carry),
@@ -810,19 +819,31 @@ impl CPU {
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
         };
-        let (new_a, z, n, h, c) = result;
+        let (new_value, z, n, h, c) = result;
         reg.set_flags(z, n, h, c);
-        reg.set_a(new_a);
+        match operand_type {
+            NopreOperands::A => reg.set_a(new_value),
+            NopreOperands::B => reg.set_b(new_value),
+            NopreOperands::C => reg.set_c(new_value),
+            NopreOperands::D => reg.set_d(new_value),
+            NopreOperands::E => reg.set_e(new_value),
+            NopreOperands::H => reg.set_h(new_value),
+            NopreOperands::L => reg.set_l(new_value),
+            NopreOperands::HL => bus.write_byte(reg.hl, new_value),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
     }
+
     // prefixed instruction with only one arg (RLC, RRC...)
     fn op_pre_1arg_carryless<F>(&mut self, instruction: Instruction, f: F)
     where
         F: Fn(u8) -> (u8, bool, bool, bool, bool),
     {
-        let a = instruction.operands[0].name.clone().into();
-        let bus = self.bus.borrow_mut();
+        let operand_type = instruction.operands[0].name.clone().into();
+        let mut bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
-        let result = match a {
+        let result = match operand_type {
             NopreOperands::A => f(reg.get_a()),
             NopreOperands::B => f(reg.get_b()),
             NopreOperands::C => f(reg.get_c()),
@@ -834,9 +855,20 @@ impl CPU {
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
         };
-        let (new_a, z, n, h, c) = result;
+        let (new_value, z, n, h, c) = result;
         reg.set_flags(z, n, h, c);
-        reg.set_a(new_a);
+        match operand_type {
+            NopreOperands::A => reg.set_a(new_value),
+            NopreOperands::B => reg.set_b(new_value),
+            NopreOperands::C => reg.set_c(new_value),
+            NopreOperands::D => reg.set_d(new_value),
+            NopreOperands::E => reg.set_e(new_value),
+            NopreOperands::H => reg.set_h(new_value),
+            NopreOperands::L => reg.set_l(new_value),
+            NopreOperands::HL => bus.write_byte(reg.hl, new_value),
+            NopreOperands::INVALID => panic!("Invalid operand"),
+            _ => panic!("Missing operand for add 8bit?"),
+        };
     }
     fn init_log_file(&mut self, file_path: &str) {
         // Open the file with append mode

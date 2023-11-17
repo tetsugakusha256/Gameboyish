@@ -30,11 +30,12 @@ impl Emulator {
     pub fn init(&mut self) {
         // self.screen.init("Main");
         self.debug_screen.init("Debug");
-        self.bus.borrow_mut().init();
         self.bus
             .borrow_mut()
             .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/01-special.gb")
             .unwrap();
+        self.bus.borrow_mut().init();
+        // Activate logging
         self.cpu.init_with_log();
         self.start();
     }
@@ -79,7 +80,7 @@ impl Emulator {
             ));
         }
         // self.screen.next_tick();
-        if self.cycles > 314680 {
+        if self.cycles > 441800 {
             self.stop();
         }
     }

@@ -2,7 +2,7 @@ use std::{u16::MAX as MAXu16, u8::MAX};
 pub trait Bit {
     fn set_bit(&mut self, bit: u8, value: bool);
     fn get_bit(&self, bit: u8) -> bool;
-    fn to_bits_array(&self) -> [u8; 8]; 
+    fn to_bits_array(&self) -> [u8; 8];
 }
 impl Bit for u8 {
     fn get_bit(&self, bit: u8) -> bool {
@@ -29,6 +29,7 @@ impl Bit for u8 {
 pub trait NibblesU16 {
     fn low_nibble(self) -> u8;
     fn high_nibble(self) -> u8;
+    fn low_12(self) -> u16;
 }
 impl NibblesU16 for u16 {
     fn low_nibble(self) -> u8 {
@@ -36,6 +37,9 @@ impl NibblesU16 for u16 {
     }
     fn high_nibble(self) -> u8 {
         ((self & 0xFF00) >> 8) as u8
+    }
+    fn low_12(self) -> u16 {
+        (self & 0x0FFF)
     }
 }
 pub trait NibblesU8 {

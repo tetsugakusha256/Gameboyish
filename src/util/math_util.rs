@@ -1,4 +1,4 @@
-use super::u8_traits::{NibblesU8, Bit, NibblesU16};
+use super::u8_traits::{Bit, NibblesU16, NibblesU8};
 
 /// TODO: Check what should happen if a + b is neg
 /// TODO: are signed number ones complement or sign magnitude?
@@ -18,7 +18,8 @@ pub fn signed_addition(a: u16, b: u8) -> (u16, bool) {
 /// return (result, sub, halfcarry, carry)
 pub fn addition_16bit(a: u16, b: u16) -> (u16, bool, bool, bool) {
     let (result, carry) = a.overflowing_add(b);
-    let halfcarry = (a.low_nibble() as u16 + b.low_nibble() as u16) > 255;
+    let halfcarry = (a.low_12() + b.low_12()) > 0xFFF;
+    println!("a {} b {} halfcarry {}", a, b, halfcarry);
     (result, false, halfcarry, carry)
 }
 /// return (result, zero, sub, halfcarry, carry)
@@ -30,7 +31,7 @@ pub fn addition(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
 /// return (result, halfcarry, carry)
 /// TODO: check what halfcarry means here and if/how subtraction should overflow
 pub fn subtraction(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
-    println!("a {} b {}", a,b);
+    println!("a {} b {}", a, b);
     let (result, carry) = a.overflowing_sub(b);
     println!("res {} ", result);
     let (_, halfcarry) = a.low_nibble().overflowing_sub(b.low_nibble());
@@ -123,25 +124,26 @@ pub fn swap_nibble(a: u8) -> (u8, bool, bool, bool, bool) {
 pub fn rotate_right_carry(a: u8, carry: bool) -> (u8, bool, bool, bool, bool) {
     let overflow = a.get_bit(0);
     let mut res = a.rotate_right(1);
+    println!("res {}", res);
     // set carry bit in it's place
     res.set_bit(7, carry);
-    (res, false, false, false, overflow)
+    (res, res == 0, false, false, overflow)
 }
 pub fn rotate_left_carry(a: u8, carry: bool) -> (u8, bool, bool, bool, bool) {
     let overflow = a.get_bit(7);
     let mut res = a.rotate_left(1);
     res.set_bit(0, carry);
-    (res, false, false, false, overflow)
+    (res, res == 0, false, false, overflow)
 }
 pub fn rotate_right(a: u8) -> (u8, bool, bool, bool, bool) {
     let overflow = a.get_bit(0);
     let res = a.rotate_right(1);
-    (res, false, false, false, overflow)
+    (res, res == 0, false, false, overflow)
 }
 pub fn rotate_left(a: u8) -> (u8, bool, bool, bool, bool) {
     let overflow = a.get_bit(7);
     let res = a.rotate_left(1);
-    (res, false, false, false, overflow)
+    (res, res == 0, false, false, overflow)
 }
 pub fn shift_right_logical(a: u8) -> (u8, bool, bool, bool, bool) {
     let overflow = a.get_bit(0);
