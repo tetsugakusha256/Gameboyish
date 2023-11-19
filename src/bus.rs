@@ -29,6 +29,16 @@ impl VRAM {
             wx: bus.read_byte(0xFF4B),
         }
     }
+    pub fn get_tile_line(&self, y_offset: u8, tile_number: u8, size_16bit: bool) -> (u8, u8) {
+        let (mut y_offset, mut tile_number) = (y_offset, tile_number);
+        if size_16bit && y_offset > 7 {
+            y_offset = y_offset - 8;
+            tile_number += 1;
+        }
+        self.bus
+            .borrow()
+            .get_tile_x_line_2bytes(0x8000 + tile_number as u16, y_offset)
+    }
     pub fn lock_oam(&mut self) {
         self.bus.borrow_mut().lock_oam();
     }
@@ -43,7 +53,7 @@ impl VRAM {
     }
     pub fn get_lcd_control(&self) -> LCDControlReg {
         LCDControlReg {
-            byte: self.bus.borrow().read_byte(0xFF40),
+            bus: Rc::clone(&self.bus),
         }
     }
     pub fn set_ly(&mut self, value: u8) {
@@ -251,7 +261,7 @@ impl LCDStatusReg {
     pub fn get_lyc(&self) -> u8 {
         self.bus.borrow().read_byte(0xFF44)
     }
-    pub fn set_ppu_mode(&mut self, mode: PPUModes) {
+    pub fn set_ppu_mode(&mut self, mode: &PPUModes) {
         let mut bus = self.bus.borrow_mut();
         let (bit_1, bit_0) = match mode {
             PPUModes::Mode0 => (false, false),
@@ -290,43 +300,47 @@ impl WinBackPosReg {
         WinBackPosReg { bus }
     }
     /// Return (scx, scy)
-    pub fn get_window_pos(&self) -> (u8,u8){
+    pub fn get_window_pos(&self) -> (u8, u8) {
         let bus = self.bus.borrow();
-        return (bus.read_byte(0xFF4B),bus.read_byte(0xFF4A))
+        return (bus.read_byte(0xFF4B), bus.read_byte(0xFF4A));
     }
     /// Return (scx, scy)
-    pub fn get_background_scroll(&self) -> (u8,u8){
+    pub fn get_background_scroll(&self) -> (u8, u8) {
         let bus = self.bus.borrow();
-        return (bus.read_byte(0xFF43),bus.read_byte(0xFF42))
+        return (bus.read_byte(0xFF43), bus.read_byte(0xFF42));
     }
 }
 pub struct LCDControlReg {
-    byte: u8,
+    bus: Rc<RefCell<Bus>>,
 }
 impl LCDControlReg {
+    pub fn new(bus: Rc<RefCell<Bus>>) -> LCDControlReg {
+        LCDControlReg { bus }
+    }
     pub fn lcd_ppu_enable(&self) -> bool {
-        self.byte.get_bit(7)
+        self.bus.borrow().read_byte(0xFF40).get_bit(7)
     }
     pub fn win_tile_map(&self) -> bool {
-        self.byte.get_bit(6)
+        self.bus.borrow().read_byte(0xFF40).get_bit(6)
     }
     pub fn win_enable(&self) -> bool {
-        self.byte.get_bit(5)
+        self.bus.borrow().read_byte(0xFF40).get_bit(5)
     }
     pub fn bg_win_tiles(&self) -> bool {
-        self.byte.get_bit(4)
+        self.bus.borrow().read_byte(0xFF40).get_bit(4)
     }
     pub fn bg_tile_map(&self) -> bool {
-        self.byte.get_bit(3)
+        self.bus.borrow().read_byte(0xFF40).get_bit(3)
     }
+    // false = 8pixel true = 16pixel
     pub fn obj_size(&self) -> bool {
-        self.byte.get_bit(2)
+        self.bus.borrow().read_byte(0xFF40).get_bit(2)
     }
     pub fn obj_enable(&self) -> bool {
-        self.byte.get_bit(1)
+        self.bus.borrow().read_byte(0xFF40).get_bit(1)
     }
     pub fn bg_win_enable_priority(&self) -> bool {
-        self.byte.get_bit(0)
+        self.bus.borrow().read_byte(0xFF40).get_bit(0)
     }
 }
 pub struct OAMSprite {
@@ -487,9 +501,9 @@ impl Bus {
         self.data[address as usize] = value;
     }
     pub fn write_byte_as_cpu(&mut self, address: u16, value: u8) {
-        if address == 0xFF44 {
-            return;
-        }
+        // if address == 0xFF44 {
+        //     return;
+        // }
         if self.vram_lock && (0x8000..=0x9FFF).contains(&address) {
             return;
         }

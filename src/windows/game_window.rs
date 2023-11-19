@@ -5,8 +5,8 @@ use raqote::{DrawOptions, DrawTarget, PathBuilder, SolidSource, Source};
 
 use crate::util::tiles_util::ScreenVector;
 
-pub const GAMEBOY_SCREEN_WIDTH: usize = 144usize;
-pub const GAMEBOY_SCREEN_HEIGHT: usize = 160usize;
+pub const GAMEBOY_SCREEN_WIDTH: usize = 160usize;
+pub const GAMEBOY_SCREEN_HEIGHT: usize = 144usize;
 pub struct GameWindow {
     width: usize,
     height: usize,
@@ -30,7 +30,7 @@ impl GameWindow {
             self.width,
             self.height,
             WindowOptions {
-                resize: false,
+                resize: true,
                 ..WindowOptions::default()
             },
         )
@@ -38,7 +38,7 @@ impl GameWindow {
         self.window = Some(window);
     }
 
-    pub fn next_tick(&mut self, buffer: ScreenVector) {
+    pub fn next_tick(&mut self, buffer: &ScreenVector) {
         if self.last_refresh.elapsed().as_millis() >= self.refresh_rate_delta as u128 {
             // println!("refresh: {:?}", self.last_refresh.elapsed());
             self.last_refresh = Instant::now();
@@ -46,7 +46,7 @@ impl GameWindow {
         }
     }
     // pub fn draw(&mut self, array: [[u8;GAMEBOY_SCREEN_WIDTH];GAMEBOY_SCREEN_HEIGHT]) {
-    pub fn draw(&mut self, buffer: ScreenVector) {
+    pub fn draw(&mut self, buffer: &ScreenVector) {
         // let vec = array.concat();
         if let Some(window) = &mut self.window {
             let size = window.get_size();

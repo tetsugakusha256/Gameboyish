@@ -89,7 +89,7 @@ impl CPU {
             if self.log_buffer.is_some() {
                 self.log_state_to_file();
             }
-            if self.cycles_since_last_cmd % 10000 == 0 {
+            if self.cycles_since_last_cmd % 1 == 0 {
                 println!(
                     "Running code: {:#02x}, cycle: {}",
                     self.opcode, self.cycles_since_last_cmd

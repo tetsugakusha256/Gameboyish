@@ -28,17 +28,19 @@ pub struct Emulator {
 }
 impl Emulator {
     pub fn init(&mut self) {
-        // self.screen.init("Main");
+        self.screen.init("Main");
         self.debug_screen.init("Debug");
         self.bus
             .borrow_mut()
-            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/07-jr,jp,call,ret,rst.gb")
+            .load_cartridge(
+                "/home/anon/Documents/Code/GameBoyish/roms/Dr. Mario (JU) (V1.1).gb",
+            )
             .unwrap();
         // Load boot rom
         self.bus.borrow_mut().init();
         // Activate logging
         // self.cpu.init_with_log();
-        
+
         self.start();
     }
     pub fn start(&mut self) {
@@ -76,14 +78,14 @@ impl Emulator {
         // self.bus.borrow_mut().write_slice(0x8000, &[0x56u8;8192]);
 
         if self.cycles % 1000 == 0 {
-            self.debug_screen.next_tick(vram_to_screen(
+            self.debug_screen.next_tick(&vram_to_screen(
                 Vec::from(self.bus.borrow().read_bytes_range(0x8000, 8192)),
                 16,
             ));
+            self.screen.next_tick(&self.ppu.screen_array);
         }
-        // self.screen.next_tick();
 
-        if self.cycles > 17558000{
+        if self.cycles > 3142300 {
             self.stop();
         }
     }
@@ -93,7 +95,11 @@ impl Emulator {
 mod tests {
     use super::{Emulator, EmulatorState, CPU};
     use crate::{
-        bus::{Bus, VRAM}, io_handler::IOHandler, ppu::PPU, register::Registers, timer::Timer,
+        bus::{Bus, VRAM},
+        io_handler::IOHandler,
+        ppu::PPU,
+        register::Registers,
+        timer::Timer,
         windows::game_window::GameWindow,
     };
     use std::{cell::RefCell, rc::Rc};

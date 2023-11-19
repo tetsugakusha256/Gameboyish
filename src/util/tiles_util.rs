@@ -64,7 +64,15 @@ impl TileVector {
     }
 }
 
-fn tile_fuse_byte(l: u8, h: u8) -> Vec<u32> {
+pub fn tile_fuse_byte_u8(l: u8, h: u8) -> Vec<u8> {
+    let h_bits = h.to_bits_array();
+    let l_bits = l.to_bits_array();
+    let iterator = h_bits.iter().zip(l_bits.iter());
+    iterator
+        .map(|(h_bit, l_bit)| *h_bit as u8 * 2 + *l_bit as u8)
+        .collect()
+}
+fn tile_fuse_byte_u32(l: u8, h: u8) -> Vec<u32> {
     let h_bits = h.to_bits_array();
     let l_bits = l.to_bits_array();
     let iterator = h_bits.iter().zip(l_bits.iter());
@@ -115,7 +123,7 @@ fn vram_to_tile_vec(vram: Vec<u8>, tile_per_line: u8) -> TileVector {
 fn from_tile_vec_to_gray_vec(byte_vec: TileVector) -> ScreenVector {
     let mut gray_vec: Vec<u32> = Vec::new();
     for byte_pair in byte_vec.tile_vec.chunks(2) {
-        gray_vec.extend_from_slice(&tile_fuse_byte(byte_pair[0], byte_pair[1]));
+        gray_vec.extend_from_slice(&tile_fuse_byte_u32(byte_pair[0], byte_pair[1]));
     }
     ScreenVector {
         pixelcolor_vec: gray_vec,
@@ -153,17 +161,17 @@ pub fn from_u8_gray_to_rgb(gray: u8) -> u32 {
 mod tests {
     use crate::util::tiles_util::vram_to_tile_vec;
 
-    use super::{tile_fuse_byte, VRAM_BYTE_SIZE};
+    use super::{tile_fuse_byte_u32, VRAM_BYTE_SIZE};
 
     #[test]
     fn tile_fuse_byte_test() {
         let h = 0b0110_0000;
         let l = 0b0101_0000;
-        let fused = tile_fuse_byte(l, h);
+        let fused = tile_fuse_byte_u32(l, h);
         assert_eq!(fused, vec![0, 3, 2, 1, 0, 0, 0, 0]);
         let h = 0b1010_0001;
         let l = 0b0100_0101;
-        let fused = tile_fuse_byte(l, h);
+        let fused = tile_fuse_byte_u32(l, h);
         assert_eq!(fused, vec![2, 1, 2, 0, 0, 1, 0, 3]);
         let mut vec = vec![0, 8];
         vec.extend_from_slice(vec![1, 2, 0].as_slice());
@@ -174,7 +182,7 @@ mod tests {
         let vec = vec![0x3C, 0x7E, 0x3C, 0x7E];
         let mut gray_vec: Vec<u32> = vec![];
         for byte_pair in vec.chunks(2) {
-            gray_vec.extend_from_slice(&tile_fuse_byte(byte_pair[0], byte_pair[1]));
+            gray_vec.extend_from_slice(&tile_fuse_byte_u32(byte_pair[0], byte_pair[1]));
         }
         assert_eq!(
             gray_vec,
