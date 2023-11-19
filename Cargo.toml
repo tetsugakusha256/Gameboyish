@@ -11,3 +11,5 @@ serde_json = "1.0.105"
 raqote = "0.8.3"
 minifb = "0.25.0"
 font-kit = "0.11.0"
+evdev = "0.12.1"
+xkbcommon = { version = "0.6", features = ["x11"] }

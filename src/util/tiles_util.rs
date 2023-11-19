@@ -1,4 +1,4 @@
-use crate::windows::game_window::from_u32_gray_to_rgb;
+use crate::{windows::game_window::from_u32_gray_to_rgb, bus::{OAMSprite, VRAM}};
 
 use super::u8_traits::Bit;
 
@@ -12,11 +12,28 @@ pub struct ScreenVector {
     pub width: usize,
 }
 impl ScreenVector {
+    pub fn new_with_screen_size(width: usize, height: usize) -> ScreenVector {
+        let length = width * height;
+        ScreenVector {
+            pixelcolor_vec: vec![0u32; length],
+            width,
+        }
+    }
     pub fn new(vector: Vec<u32>, width: usize) -> ScreenVector {
         ScreenVector {
             pixelcolor_vec: vector,
             width,
         }
+    }
+    // TODO:
+    pub fn insert_object_tile(&mut self, object_tile: &OAMSprite, vram: &VRAM){
+           
+    }
+    pub fn set_x_y_gray(&mut self, x: usize, y: usize, gray_value: u8) {
+        if x >= self.width || y >= self.height() {
+            panic!("Out of bound screen read attempt");
+        }
+        self.pixelcolor_vec[x + y * self.width] = from_u8_gray_to_rgb(gray_value)
     }
     pub fn height(&self) -> usize {
         self.pixelcolor_vec.len() / self.width
@@ -127,6 +144,11 @@ fn print_tile_vec(tile_vec: TileVector) {
     }
 }
 
+pub fn from_u8_gray_to_rgb(gray: u8) -> u32 {
+    let gray = gray.saturating_mul(85) as u32;
+    let (r, g, b) = (gray, gray, gray);
+    (r << 16) | (g << 8) | b
+}
 #[cfg(test)]
 mod tests {
     use crate::util::tiles_util::vram_to_tile_vec;

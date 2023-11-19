@@ -1,7 +1,8 @@
 use std::{cell::RefCell, rc::Rc, time::Instant};
 
 use crate::{
-    bus::Bus,
+    bus::{Bus, VRAM},
+    util::tiles_util::ScreenVector,
     windows::game_window::{GameWindow, GAMEBOY_SCREEN_HEIGHT, GAMEBOY_SCREEN_WIDTH},
 };
 
@@ -26,38 +27,67 @@ const MODE_0_DOTS_MAX: usize = 204usize;
 const MODE_1_DOTS: usize = 4560usize;
 
 pub struct PPU {
-    pub bus: Rc<RefCell<Bus>>,
-    pub screen_array: [[u8; GAMEBOY_SCREEN_WIDTH]; GAMEBOY_SCREEN_HEIGHT],
+    pub vram: VRAM,
+    pub screen_array: ScreenVector,
     pub current_mode: PPUModes,
-    pub dots_counter: usize,
+
+    dots_counter: usize,
+    ly: u8,
 }
 impl PPU {
-    pub fn new(bus: Rc<RefCell<Bus>>) -> PPU {
+    pub fn new(vram: VRAM) -> PPU {
         PPU {
-            bus,
-            screen_array: [[0; GAMEBOY_SCREEN_WIDTH]; GAMEBOY_SCREEN_HEIGHT],
-            current_mode: PPUModes::Mode0,
+            vram,
+            screen_array: ScreenVector::new_with_screen_size(
+                GAMEBOY_SCREEN_WIDTH,
+                GAMEBOY_SCREEN_HEIGHT,
+            ),
+            current_mode: PPUModes::Mode1,
             dots_counter: 0,
+            ly: 0,
         }
     }
     pub fn next_tick(&mut self) {
-        self.dots_counter += 4;
+        // 4 dots per cpu cycle
+        for _ in 0..=4 {
+            self.dots_counter += 1;
+            self.tick_mode();
+        }
+        if self.dots_counter >= 70224 {
+            self.dots_counter = 0
+        }
+        self.update_ly();
     }
+
+    fn update_ly(&mut self) {
+        self.ly += 1;
+        if self.ly >= 153 {
+            self.ly = 0
+        }
+        self.vram.set_ly(self.ly);
+    }
+
     fn tick_mode(&self) {
         match self.current_mode {
-            PPUModes::Mode2 => todo!(),
-            PPUModes::Mode3 => todo!(),
-            PPUModes::Mode0 => todo!(),
-            PPUModes::Mode1 => todo!(),
+            PPUModes::Mode2 => self.mode2(),
+            PPUModes::Mode3 => self.mode3(),
+            PPUModes::Mode0 => self.mode0(),
+            PPUModes::Mode1 => self.mode1(),
         }
     }
-    fn mode0(&self) {}
-    fn mode1(&self) {}
+    fn mode_all_at_once(&self) {
+        // Draw background
+
+        // Draw objects
+        let oam_vec = self.vram.get_oam_sprites_vec();
+        for object in oam_vec {}
+    }
+
     fn mode2(&self) {}
     fn mode3(&self) {}
+    fn mode0(&self) {}
+    fn mode1(&self) {}
     fn block_memory(&self) {}
-    
 
     fn draw() {}
-
 }

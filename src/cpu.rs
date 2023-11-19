@@ -2,6 +2,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::{cell::RefCell, rc::Rc};
 
+use crate::bus::{InteruptReg, InteruptType};
 use crate::util::math_util::{
     adc, addition, addition_16bit, and, compare, complement, daa, dec, dec_16bit, inc, inc_16bit,
     or, res_bit, rotate_left, rotate_left_carry, rotate_right, rotate_right_carry, sbc, set_bit,
@@ -22,7 +23,13 @@ pub struct CPU {
     pub bus: Rc<RefCell<Bus>>,
     cycles_since_last_cmd: u64,
     cycles_to_wait: u64,
+
     ime: bool,
+    interupt_reg: InteruptReg,
+    interupt_happened: bool,
+    opcode: u8,
+    current_interupt: Option<InteruptType>,
+    interupt_stage: u8,
     next_pc: u16,
 
     log_buffer: Option<io::BufWriter<File>>,
@@ -34,27 +41,37 @@ impl CPU {
     pub fn new(bus: Rc<RefCell<Bus>>) -> CPU {
         CPU {
             reg: Registers::new(),
+            interupt_reg: InteruptReg::new(Rc::clone(&bus)),
             bus,
             cycles_to_wait: 0,
+            opcode: 0x00,
             cycles_since_last_cmd: 0,
             instruction_dict_notprefixed: load_json("opcodes_nopre.json").unwrap(),
             instruction_dict_prefixed: load_json("opcodes_pre.json").unwrap(),
             ime: false,
             next_pc: 0x00,
             log_buffer: None,
+            current_interupt: None,
+            interupt_stage: 0,
+            interupt_happened: false,
         }
     }
     pub fn new_doctor(bus: Rc<RefCell<Bus>>) -> CPU {
         CPU {
             reg: Registers::new_doctor(),
+            interupt_reg: InteruptReg::new(Rc::clone(&bus)),
             bus,
             cycles_to_wait: 0,
             cycles_since_last_cmd: 0,
+            opcode: 0x00,
             instruction_dict_notprefixed: load_json("opcodes_nopre.json").unwrap(),
             instruction_dict_prefixed: load_json("opcodes_pre.json").unwrap(),
             ime: false,
             next_pc: 0x00,
             log_buffer: None,
+            current_interupt: None,
+            interupt_stage: 0,
+            interupt_happened: false,
         }
     }
     pub fn init_with_log(&mut self) {
@@ -66,31 +83,33 @@ impl CPU {
     pub fn next_tick(&mut self) {
         if self.cycles_since_last_cmd >= self.cycles_to_wait {
             // self.cycles_since_last_cmd = 0;
+
             // Run next command
-            let opcode = self.bus.borrow().read_byte(self.reg.pc);
+            self.opcode = self.bus.borrow().read_byte(self.reg.pc);
+            println!("opcode {:#02x}", self.opcode);
             if self.log_buffer.is_some() {
                 self.log_state_to_file();
             }
             println!(
                 "Running code: {:#02x}, cycle: {}",
-                opcode, self.cycles_since_last_cmd
+                self.opcode, self.cycles_since_last_cmd
             );
-            // let dict;
-            // if opcode == 0xCB {
-            //     dict = &self.instruction_dict_prefixed;
-            // } else {
-            //     dict = &self.instruction_dict_notprefixed;
-            // };
-            // let instruction = &dict[opcode as usize];
-            // println!("{}\n", instruction);
-            // self.bus.borrow().print_slice(0x7000, 0x8b40);
-            self.tick(opcode);
+            self.check_for_interupt();
+            if !self.interupt_happened {
+                self.tick(self.opcode);
+                println!("running next tick");
+            }
+            self.interupt_happened = false;
         }
         self.cycles_since_last_cmd += 1;
+        // Applying the next_pc mem that might have been altered by a jump operation
+        println!("Next_pc {:#04x}", self.next_pc);
+        self.reg.pc = self.next_pc;
     }
     pub fn tick(&mut self, opcode: u8) {
         // Set next_pc mem according to instruction byte length might be assigned again by a jump
         self.next_pc = self.get_next_pc(opcode);
+        println!("Before tick: Next_pc {:#04x}", self.next_pc);
         if opcode == 0xCB {
             // Set opcode to next byte
             let opcode = self.bus.borrow().read_byte(self.reg.get_pc_next());
@@ -101,8 +120,6 @@ impl CPU {
                 opcode,
             );
         };
-        // Applying the next_pc mem that might have been altered by a jump operation
-        self.reg.pc = self.next_pc;
     }
     fn get_next_pc(&self, opcode: u8) -> u16 {
         let dict;
@@ -112,6 +129,11 @@ impl CPU {
             dict = &self.instruction_dict_notprefixed;
         };
         let instruction = &dict[opcode as usize];
+        // println!("instruction byte:{}, opcode:{}", instruction.bytes, &opcode);
+        println!("opcode:{}, opcode usize:{}", &opcode, opcode as usize);
+        // println!("instruction {}", instruction);
+        // println!("instruction 0x01 {}", &dict[0x01]);
+        // println!("instruction 1 {}", &dict[1]);
         return self.reg.pc + instruction.bytes as u16;
     }
 
@@ -240,7 +262,6 @@ impl CPU {
         };
     }
     fn op_inc_16bit(&mut self, instruction: Instruction) {
-        println!("instruction: {}", instruction);
         let target_operand = instruction.operands[0].name.clone().into();
         let reg = &mut self.reg;
         let new_value = match target_operand {
@@ -484,9 +505,6 @@ impl CPU {
         let reg = &mut self.reg;
         let a = reg.get_a();
         let instruction_byte_size = instruction.bytes as u16;
-        // println!("instruction:{}", instruction);
-        // println!("A:{}", a);
-        // println!("next byte:{}", bus.read_next_byte(reg.pc));
         let result = match target_operand {
             NopreOperands::A
             | NopreOperands::B
@@ -567,6 +585,7 @@ impl CPU {
                 let bus = self.bus.borrow();
                 let (result, h, c) = signed_addition(reg.sp, bus.read_next_byte(reg.pc));
                 reg.sp = result;
+                reg.set_flag_z(false);
                 reg.set_flag_n(false);
                 reg.set_flag_h(h);
                 reg.set_flag_c(c);
@@ -637,7 +656,6 @@ impl CPU {
     fn op_load_16bit(&mut self, instruction: Instruction, opcode: u8) {
         //TODO: F8 3 operands
         //Check for 2 operands
-        println!("Instruction : {}", instruction);
         let (into, from) = instruction.operands_tuple().unwrap();
         let into_type: NopreOperands = into.name.into();
         let from_type: NopreOperands = from.name.into();
@@ -646,16 +664,16 @@ impl CPU {
 
         let value = match from_type {
             NopreOperands::INVALID => panic!("Invalid LD operands"),
-
             NopreOperands::HL => reg.hl,
             NopreOperands::SP => {
                 match opcode {
                     0xF8 => {
                         // TODO: flags h check
                         let (result, h, c) = signed_addition(reg.sp, bus.read_next_byte(reg.pc));
-                        reg.set_flag_c(c);
-                        reg.set_flag_h(h);
+                        reg.set_flag_z(false);
                         reg.set_flag_n(false);
+                        reg.set_flag_h(h);
+                        reg.set_flag_c(c);
                         // reg.set_flags(false, false, false, result.1);
                         result
                     }
@@ -889,6 +907,99 @@ impl CPU {
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
         };
+    }
+    fn check_for_interupt(&mut self) {
+        println!(
+            "Check interupt current interupt: {}, ime: {}, interupt flag: {}, interupt enable: {}",
+            self.current_interupt.is_none(),
+            self.ime,
+            self.interupt_reg.get_interupt_flag(),
+            self.interupt_reg.get_interupt_enable()
+        );
+        if self.current_interupt.is_none() {
+            if self.ime {
+                self.current_interupt = self.interupt_reg.query_interupts_flag_enable();
+            }
+        }
+        if self.current_interupt.is_some() {
+            println!(
+                "let's goo interupt : {:?}",
+                self.current_interupt.as_ref().unwrap()
+            );
+            // push current pc on stack
+            let reg = &mut self.reg;
+
+            reg.sp = reg.sp - 2;
+            self.bus
+                .borrow_mut()
+                .write_2_bytes_little_endian(reg.sp, reg.pc);
+
+            let current_interupt = self.current_interupt.as_ref().unwrap();
+            // set pc to correct address
+            self.next_pc = match current_interupt {
+                InteruptType::VBlank => 0x0040,
+                InteruptType::LCD => 0x0048,
+                InteruptType::Timer => 0x0050,
+                InteruptType::Serial => 0x0058,
+                InteruptType::Joypad => 0x0060,
+            };
+            // TODO: I don't understand but apparenty I need this?
+            self.next_pc += 1;
+
+            println!("next_pc in check interupt : {:#04x}", self.next_pc);
+            self.ime = false;
+            self.interupt_reg.reset_flag(current_interupt);
+            self.interupt_stage = 0;
+            self.current_interupt = None;
+            self.interupt_happened = true;
+
+            // TODO: for now removed, do all in one step as it seems to be like this in the
+            // the test interupt file
+
+            // self.interupt_stage += 1;
+            //
+            // Set a "interupt step x var"
+            // step 1 nop
+            // step 2 nop
+            // step 3 push
+            // step 4 pc = interupt address
+            // Clear flag?
+            //
+            // match self.interupt_stage {
+            //     1 => {
+            //         self.ime = false;
+            //         self.opcode = 0x00;
+            //     }
+            //     2 => {
+            //         self.opcode = 0x00;
+            //     }
+            //     3 => {
+            //         // HACK: A third nop that shouldn't happen to allow for 2 cycles to pass
+            //         // While pushing manually
+            //         // Idea: use unused opcode to add one that pushes pc to sp
+            //
+            //         // self.opcode = 0x00;
+            //
+            //         // push current
+            //         let reg = &mut self.reg;
+            //         let mut bus = self.bus.borrow_mut();
+            //         reg.sp = reg.sp - 2;
+            //         bus.write_2_bytes_little_endian(reg.sp, reg.pc);
+            //     }
+            //     4 => {
+            //         self.next_pc = match self.current_interupt.as_ref().unwrap() {
+            //             InteruptType::VBlank => 0x0040,
+            //             InteruptType::LCD => 0x0048,
+            //             InteruptType::Timer => 0x0050,
+            //             InteruptType::Serial => 0x0058,
+            //             InteruptType::Joypad => 0x0060,
+            //         };
+            //         self.interupt_stage = 0;
+            //         self.current_interupt = None;
+            //     }
+            //     _ => panic!("Interupt stage >4 should be impossible"),
+            // }
+        }
     }
     fn init_log_file(&mut self, file_path: &str) {
         // Open the file with append mode

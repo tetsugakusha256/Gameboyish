@@ -32,10 +32,10 @@ impl Emulator {
         self.debug_screen.init("Debug");
         self.bus
             .borrow_mut()
-            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/03-op sp,hl.gb")
+            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/Tetris (JUE) (V1.1) [!].gb")
             .unwrap();
         // Load boot rom
-        // self.bus.borrow_mut().init();
+        self.bus.borrow_mut().init();
         // Activate logging
         // self.cpu.init_with_log();
         
@@ -70,27 +70,20 @@ impl Emulator {
         // TODO: Think where to put this because reading button is made in 2 step
         // put a bit to set if we want to check direction or buttons
         // then read the value (How many cycles in between those?)
-        self.io_handler.next_tick();
+        // self.io_handler.next_tick();
         self.cpu.next_tick();
         self.ppu.next_tick();
         // self.bus.borrow_mut().write_slice(0x8000, &[0x56u8;8192]);
 
-        if self.cycles % 100000 == 0 {
+        if self.cycles % 1000 == 0 {
             self.debug_screen.next_tick(vram_to_screen(
                 Vec::from(self.bus.borrow().read_bytes_range(0x8000, 8192)),
                 16,
             ));
         }
         // self.screen.next_tick();
-        // 5
-        // if self.cycles > 1761130 {
-        // 7
-        // if self.cycles > 2410110 {
-        // if self.cycles > 1100000 {
-        if self.cycles > 675358 {
-        //
-        // if self.cycles > 186640 {
-        // if self.cycles > 2541000 {
+
+        if self.cycles > 317321{
             self.stop();
         }
     }
@@ -100,7 +93,7 @@ impl Emulator {
 mod tests {
     use super::{Emulator, EmulatorState, CPU};
     use crate::{
-        bus::Bus, io_handler::IOHandler, ppu::PPU, register::Registers, timer::Timer,
+        bus::{Bus, VRAM}, io_handler::IOHandler, ppu::PPU, register::Registers, timer::Timer,
         windows::game_window::GameWindow,
     };
     use std::{cell::RefCell, rc::Rc};
@@ -110,11 +103,9 @@ mod tests {
         let bus = Rc::new(RefCell::new(Bus::new()));
         let emu = Emulator {
             cpu: CPU::new(Rc::clone(&bus)),
-            ppu: PPU::new(Rc::clone(&bus)),
-            io_handler: IOHandler {
-                bus: Rc::clone(&bus),
-            },
-            bus,
+            ppu: PPU::new(VRAM::new(Rc::clone(&bus))),
+            io_handler: IOHandler::new(Rc::clone(&bus)),
+            bus: Rc::clone(&bus),
             timer: Timer::new(),
             state: EmulatorState::Running,
             cycles: 0,
@@ -122,26 +113,26 @@ mod tests {
             debug_screen: GameWindow::new(500, 500),
         };
         {
-            emu.cpu.bus.borrow_mut().write_slice(0x0010, &[1, 2, 3]);
+            bus.borrow_mut().write_slice(0x0010, &[1, 2, 3]);
             let binding = emu.cpu.bus.borrow();
             let slice = binding.read_bytes_range(0x0010, 3);
             assert_eq!(slice, &[1, 2, 3]);
         }
         {
-            emu.ppu.bus.borrow_mut().write_slice(0x0010, &[1, 2, 3]);
-            let binding = emu.ppu.bus.borrow();
+            bus.borrow_mut().write_slice(0x0010, &[1, 2, 3]);
+            let binding = bus.borrow();
             let slice = binding.read_bytes_range(0x0010, 3);
             assert_eq!(slice, &[1, 2, 3]);
         }
         {
-            emu.ppu.bus.borrow_mut().write_byte(0x00A0, 5);
-            let binding = emu.cpu.bus.borrow();
+            bus.borrow_mut().write_byte(0x00A0, 5);
+            let binding = bus.borrow();
             let val = binding.read_byte(0x00A0);
             assert_eq!(val, 5);
         }
 
-        emu.ppu.bus.borrow_mut().write_slice(0x8000, &[2u8; 8192]);
-        let binding = emu.cpu.bus.borrow();
+        bus.borrow_mut().write_slice(0x8000, &[2u8; 8192]);
+        let binding = bus.borrow();
         let val = binding.read_byte(0x8222);
         assert_eq!(val, 2);
     }

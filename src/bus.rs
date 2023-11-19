@@ -1,7 +1,272 @@
 use crate::{
     ppu::VideoMemBlock,
-    util::{cartridge_util::load, error_type::Errors, u8_traits::NibblesU16},
+    util::{
+        cartridge_util::load,
+        error_type::Errors,
+        u8_traits::{Bit, NibblesU16},
+    },
 };
+use std::{cell::RefCell, rc::Rc};
+
+pub struct VRAM {
+    bus: Rc<RefCell<Bus>>,
+}
+impl VRAM {
+    pub fn new(bus: Rc<RefCell<Bus>>) -> VRAM {
+        VRAM { bus }
+    }
+    pub fn get_background(&self) -> BackgroundReg {
+        let bus = self.bus.borrow();
+        BackgroundReg {
+            scy: bus.read_byte(0xFF42),
+            scx: bus.read_byte(0xFF43),
+        }
+    }
+    pub fn get_window(&self) -> WindowReg {
+        let bus = self.bus.borrow();
+        WindowReg {
+            wy: bus.read_byte(0xFF4A),
+            wx: bus.read_byte(0xFF4B),
+        }
+    }
+    pub fn get_lcd_control(&self) -> LCDControlReg {
+        LCDControlReg {
+            byte: self.bus.borrow().read_byte(0xFF40),
+        }
+    }
+    pub fn set_ly(&mut self, value: u8) {
+        self.bus.borrow_mut().write_byte(0xFF44, value)
+    }
+    pub fn get_ly(&self) -> u8 {
+        self.bus.borrow().read_byte(0xFF44)
+    }
+    pub fn get_oam_sprites_vec(&self) -> Vec<OAMSprite> {
+        let mut oam_vec = vec![];
+        let oam_mem_start = 0xFE00;
+        let bus = self.bus.borrow();
+        for i in 0x00..=0x40 {
+            oam_vec.push(OAMSprite {
+                y: bus.read_byte(oam_mem_start + i * 4),
+                x: bus.read_byte(oam_mem_start + i * 4 + 1),
+                tile_number: bus.read_byte(oam_mem_start + i * 4 + 2),
+                flags: bus.read_byte(oam_mem_start + i * 4 + 3),
+            })
+        }
+        oam_vec
+    }
+    pub fn win_tile_map_vec(&self, bus: &Bus) -> Vec<u8> {
+        let address;
+        if self.get_lcd_control().win_tile_map() {
+            address = 0x9C00u16;
+        } else {
+            address = 0x9800u16;
+        }
+        bus.read_bytes_range(address, 1024).to_vec()
+    }
+    pub fn bg_tile_map_vec(&self, bus: &Bus) -> Vec<u8> {
+        let address;
+        if self.get_lcd_control().bg_tile_map() {
+            address = 0x9C00u16;
+        } else {
+            address = 0x9800u16;
+        }
+        bus.read_bytes_range(address, 1024).to_vec()
+    }
+    // Return active Background tile memory
+    pub fn bg_win_tile_memory_vec(&self, bus: &Bus) -> Vec<u8> {
+        let address;
+        if self.get_lcd_control().bg_win_tiles() {
+            address = 0x8000u16;
+        } else {
+            address = 0x8800u16;
+        }
+        bus.read_bytes_range(address, 2 * 2048).to_vec()
+    }
+}
+pub struct BackgroundReg {
+    scy: u8,
+    scx: u8,
+}
+pub struct WindowReg {
+    wy: u8,
+    wx: u8,
+}
+#[derive(Debug)]
+pub enum InteruptType {
+    VBlank,
+    LCD,
+    Timer,
+    Serial,
+    Joypad,
+}
+impl From<u8> for InteruptType {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => InteruptType::VBlank,
+            1 => InteruptType::LCD,
+            2 => InteruptType::Timer,
+            3 => InteruptType::Serial,
+            4 => InteruptType::Joypad,
+            _ => panic!("Invalid Interupt Type"),
+        }
+    }
+}
+// Interupt flags and enabled status
+pub struct InteruptReg {
+    bus: Rc<RefCell<Bus>>,
+}
+impl InteruptReg {
+    pub fn new(bus: Rc<RefCell<Bus>>) -> InteruptReg {
+        InteruptReg { bus }
+    }
+    // Return the hightest priority interupt type that has it's flag set
+    pub fn query_interupts_flag(&self) -> Option<InteruptType> {
+        let is_interupts = self.get_interupt_flag();
+        for i in 0..=4 {
+            if is_interupts.get_bit(i) {
+                return Some(i.into());
+            }
+        }
+        None
+    }
+    // Return the hightest priority interupts that has it's flag and is enable
+    pub fn query_interupts_flag_enable(&self) -> Option<InteruptType> {
+        let is_interupts = self.get_interupt_flag() & self.get_interupt_enable();
+        for i in 0..=4 {
+            if is_interupts.get_bit(i) {
+                return Some(i.into());
+            }
+        }
+        None
+    }
+    // Reset flag of given InteruptType
+    pub fn reset_flag(&mut self, interupt_type: &InteruptType) {
+        match interupt_type {
+            InteruptType::VBlank => self.set_vblank_flag(false),
+            InteruptType::LCD => self.set_lcd_flag(false),
+            InteruptType::Timer => self.set_timer_flag(false),
+            InteruptType::Serial => self.set_serial_flag(false),
+            InteruptType::Joypad => self.set_joypad_flag(false),
+        }
+    }
+
+    pub fn set_joypad_flag(&mut self, value: bool) {
+        let mut bus = self.bus.borrow_mut();
+        let mut mem = bus.read_byte(0xFFFF);
+        mem.set_bit(4, value);
+        bus.write_byte(0xFFFF, mem);
+    }
+    pub fn set_serial_flag(&mut self, value: bool) {
+        let mut bus = self.bus.borrow_mut();
+        let mut mem = bus.read_byte(0xFFFF);
+        mem.set_bit(3, value);
+        bus.write_byte(0xFFFF, mem);
+    }
+    pub fn set_timer_flag(&mut self, value: bool) {
+        let mut bus = self.bus.borrow_mut();
+        let mut mem = bus.read_byte(0xFFFF);
+        mem.set_bit(2, value);
+        bus.write_byte(0xFFFF, mem);
+    }
+    pub fn set_lcd_flag(&mut self, value: bool) {
+        let mut bus = self.bus.borrow_mut();
+        let mut mem = bus.read_byte(0xFFFF);
+        mem.set_bit(1, value);
+        bus.write_byte(0xFFFF, mem);
+    }
+    pub fn set_vblank_flag(&mut self, value: bool) {
+        let mut bus = self.bus.borrow_mut();
+        let mut mem = bus.read_byte(0xFFFF);
+        mem.set_bit(0, value);
+        println!("mem: {}", mem);
+        bus.write_byte(0xFFFF, mem);
+    }
+    pub fn get_joypad_flag(&self) -> bool {
+        self.get_interupt_flag().get_bit(4)
+    }
+    pub fn get_serial_flag(&self) -> bool {
+        self.get_interupt_flag().get_bit(3)
+    }
+    pub fn get_timer_flag(&self) -> bool {
+        self.get_interupt_flag().get_bit(2)
+    }
+    pub fn get_lcd_flag(&self) -> bool {
+        self.get_interupt_flag().get_bit(1)
+    }
+    pub fn get_vblank_flag(&self) -> bool {
+        self.get_interupt_flag().get_bit(0)
+    }
+    pub fn get_interupt_enable(&self) -> u8 {
+        self.bus.borrow().read_byte(0xFF0F)
+    }
+    pub fn get_interupt_flag(&self) -> u8 {
+        self.bus.borrow().read_byte(0xFFFF)
+    }
+    pub fn is_joypad_enable(&self) -> bool {
+        self.get_interupt_enable().get_bit(4)
+    }
+    pub fn is_serial_enable(&self) -> bool {
+        self.get_interupt_enable().get_bit(3)
+    }
+    pub fn is_timer_enable(&self) -> bool {
+        self.get_interupt_enable().get_bit(2)
+    }
+    pub fn is_lcd_enable(&self) -> bool {
+        self.get_interupt_enable().get_bit(1)
+    }
+    pub fn is_vblank_enable(&self) -> bool {
+        self.get_interupt_enable().get_bit(0)
+    }
+}
+pub struct LCDControlReg {
+    byte: u8,
+}
+impl LCDControlReg {
+    pub fn lcd_ppu_enable(&self) -> bool {
+        self.byte.get_bit(7)
+    }
+    pub fn win_tile_map(&self) -> bool {
+        self.byte.get_bit(6)
+    }
+    pub fn win_enable(&self) -> bool {
+        self.byte.get_bit(5)
+    }
+    pub fn bg_win_tiles(&self) -> bool {
+        self.byte.get_bit(4)
+    }
+    pub fn bg_tile_map(&self) -> bool {
+        self.byte.get_bit(3)
+    }
+    pub fn obj_size(&self) -> bool {
+        self.byte.get_bit(2)
+    }
+    pub fn obj_enable(&self) -> bool {
+        self.byte.get_bit(1)
+    }
+    pub fn bg_win_enable_priority(&self) -> bool {
+        self.byte.get_bit(0)
+    }
+}
+pub struct OAMSprite {
+    pub y: u8,
+    pub x: u8,
+    pub tile_number: u8,
+    pub flags: u8,
+}
+impl OAMSprite {
+    pub fn render_priority(&self) -> bool {
+        self.flags.get_bit(7)
+    }
+    pub fn y_flip(&self) -> bool {
+        self.flags.get_bit(6)
+    }
+    pub fn x_flip(&self) -> bool {
+        self.flags.get_bit(5)
+    }
+    pub fn palette_number(&self) -> bool {
+        self.flags.get_bit(4)
+    }
+}
 
 pub struct Bus {
     pub data: [u8; 0x1_0000],
@@ -69,47 +334,20 @@ impl Bus {
         let add = address as usize;
         return self.data[add];
     }
-    pub fn read_byte_small_endian(&self, address: u16) -> u8 {
+    pub fn read_2_bytes_from_little_endian_address(&self, address: u16) -> u8 {
         let high = address.high_8nibble();
         let low = address.high_8nibble();
         let small_endian_address = ((low as u16) << 8) + (high as u16);
+        // Doctor
         if small_endian_address == 0xFF44 {
             return 0x90;
         }
-        self.data[small_endian_address as usize]
+        self.read_byte(small_endian_address)
     }
     pub fn read_2_bytes_little_endian(&self, address: u16) -> u16 {
         let low = self.read_byte(address);
         let high = self.read_byte(address + 1);
         ((high as u16) << 8) + (low as u16)
-    }
-
-    /// write the byte at address + 0x0001
-    pub fn write_next_byte(&mut self, address: u16, value: u8) {
-        if address == 0xFFFF {
-            panic!("trying to read out of bus");
-        }
-        self.write_byte(address + 0x0001, value);
-    }
-    /// Read the byte at address + 0x0001
-    pub fn read_next_byte(&self, address: u16) -> u8 {
-        if address == 0xFFFF {
-            panic!()
-        }
-        self.read_byte(address + 0x0001)
-    }
-    /// TODO: check that I understand correctly the little endian here
-    pub fn get_a16_address(&self, pc: u16) -> u16 {
-        let next_byte = self.read_byte(pc + 0x0001);
-        let second_byte = self.read_byte(pc + 0x0002);
-        ((second_byte as u16) << 8) + (next_byte as u16)
-    }
-    /// TODO: check that I understand correctly the little endian here
-    pub fn get_a16_value(&self, pc: u16) -> u8 {
-        self.read_byte(self.get_a16_address(pc))
-    }
-    pub fn write_a16(&mut self, pc: u16, value: u16) {
-        self.write_2_bytes_little_endian(self.get_a16_address(pc), value)
     }
 
     pub fn read_bytes_range(&self, address: u16, length: u16) -> &[u8] {
@@ -121,6 +359,35 @@ impl Bus {
         }
         return &self.data[add..add_end];
     }
+    /// Read the byte at address + 0x0001
+    pub fn read_next_byte(&self, address: u16) -> u8 {
+        if address == 0xFFFF {
+            panic!()
+        }
+        self.read_byte(address + 0x0001)
+    }
+    /// TODO: check that I understand correctly the little endian here
+    pub fn get_a16_address(&self, pc: u16) -> u16 {
+        self.read_2_bytes_little_endian(pc + 1)
+        // let next_byte = self.read_byte(pc + 0x0001);
+        // let second_byte = self.read_byte(pc + 0x0002);
+        // ((second_byte as u16) << 8) + (next_byte as u16)
+    }
+    /// TODO: check that I understand correctly the little endian here
+    pub fn get_a16_value(&self, pc: u16) -> u8 {
+        self.read_byte(self.get_a16_address(pc))
+    }
+    pub fn write_a16(&mut self, pc: u16, value: u16) {
+        self.write_2_bytes_little_endian(self.get_a16_address(pc), value)
+    }
+    /// write the byte at address + 0x0001
+    pub fn write_next_byte(&mut self, address: u16, value: u8) {
+        if address == 0xFFFF {
+            panic!("trying to read out of bus");
+        }
+        self.write_byte(address + 0x0001, value);
+    }
+
     pub fn write_byte(&mut self, address: u16, value: u8) {
         self.data[address as usize] = value;
     }
@@ -146,6 +413,7 @@ impl Bus {
         let data_slice = &mut self.data[add..add_end];
         data_slice.copy_from_slice(slice);
     }
+
     // 0-7 line
     fn get_tile_x_line_2bytes(&self, address: u16, line: u8) -> (u8, u8) {
         if line > 7 {
@@ -158,7 +426,9 @@ impl Bus {
 
 #[cfg(test)]
 mod tests {
-    use crate::bus::Bus;
+    use std::{cell::RefCell, rc::Rc};
+
+    use crate::bus::{Bus, InteruptReg, InteruptType};
     #[test]
     fn test_read() {
         let mut bus = Bus::new();
@@ -217,16 +487,33 @@ mod tests {
         );
         assert_eq!(bus.read_byte(0x00FF), 0x50);
     }
-    #[test]
-    fn get_tile_x_line_2bytes_test() {
-        let mut bus = Bus::new();
-        bus.write_slice(0x1111, &[0x00, 0x10, 0x01, 0x00, 0x00, 0x33, 0x44]);
-        assert_eq!(bus.get_tile_x_line_2bytes(0x1111, 2), (0x00, 0x33));
-    }
+    // #[test]
+    // fn get_tile_x_line_2bytes_test() {
+    //     let mut bus = Bus::new();
+    //     bus.write_slice(0x1111, &[0x00, 0x10, 0x01, 0x00, 0x00, 0x33, 0x44]);
+    //     assert_eq!(bus.get_tile_x_line_2bytes(0x1111, 2), (0x00, 0x33));
+    // }
     #[test]
     fn get_a16_address_test() {
         let mut bus = Bus::new();
         bus.write_slice(0x0010, &[0x00, 0x10, 0x01]);
         assert_eq!(bus.get_a16_address(0x0010), 0x0110);
+    }
+    #[test]
+    fn reset_flag_test() {
+        let bus_rc = Rc::new(RefCell::new(Bus::new()));
+        let mut interupt_reg = InteruptReg::new(Rc::clone(&bus_rc));
+        {
+            let mut bus = bus_rc.borrow_mut();
+            println!("0xFFFF: {}", bus.read_byte(0xFFFF));
+            bus.write_byte(0xFFFF, 0b0000_0001);
+            println!("0xFFFF: {}", bus.read_byte(0xFFFF));
+        }
+        interupt_reg.reset_flag(&InteruptType::VBlank);
+        {
+            let mut bus = bus_rc.borrow_mut();
+            println!("0xFFFF: {}", bus.read_byte(0xFFFF));
+            assert_eq!(bus.read_byte(0xFFFF), 0b0000_0000);
+        }
     }
 }

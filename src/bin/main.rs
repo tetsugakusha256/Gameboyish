@@ -1,11 +1,15 @@
 use game_boyish::{
-    bus::Bus,
+    bus::{Bus, VRAM},
     cpu::CPU,
     emulator::{Emulator, EmulatorState},
     io_handler::IOHandler,
     ppu::PPU,
     timer::Timer,
-    util::{extract_opcode::load_json, cartridge_util::{load, check_checksum, print_header}}, windows::game_window::GameWindow, 
+    util::{
+        cartridge_util::{check_checksum, load, print_header},
+        extract_opcode::load_json,
+    },
+    windows::game_window::GameWindow,
 };
 use std::{cell::RefCell, rc::Rc};
 
@@ -15,8 +19,12 @@ fn main() {
     let mario_game = load("roms/Super Mario Land (JUE) (V1.1) [!].gb").unwrap().0;
     let pokemon_game = load("roms/Pokemon Red.gb").unwrap().0;
 
-    let test_rom = load("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/06-ld r,r.gb").unwrap().0;
-    let link_game = load("roms/Legend of Zelda, The - Link's Awakening (U) (V1.2) [!].gb").unwrap().0;
+    let test_rom = load("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/06-ld r,r.gb")
+        .unwrap()
+        .0;
+    let link_game = load("roms/Legend of Zelda, The - Link's Awakening (U) (V1.2) [!].gb")
+        .unwrap()
+        .0;
     let check1 = check_checksum(&tetris_game);
     let check2 = check_checksum(&mario_game);
     let check3 = check_checksum(&pokemon_game);
@@ -28,16 +36,12 @@ fn main() {
     println!("check: {}", check1);
     println!("check: {}", check2);
     println!("check: {}", check3);
-    let opcodes_nopre = load_json("opcodes_nopre.json");
-    let opcodes_pre = load_json("opcodes_pre.json");
     // let cpu:CPU = CPU::new();
     let bus = Rc::new(RefCell::new(Bus::new()));
     let mut emu = Emulator {
         cpu: CPU::new_doctor(Rc::clone(&bus)),
-        ppu: PPU::new(Rc::clone(&bus)),
-        io_handler: IOHandler {
-            bus: Rc::clone(&bus),
-        },
+        ppu: PPU::new(VRAM::new(Rc::clone(&bus))),
+        io_handler: IOHandler::new(Rc::clone(&bus)),
         bus,
         timer: Timer::new(),
         state: EmulatorState::Running,
@@ -46,4 +50,6 @@ fn main() {
         debug_screen: GameWindow::new(144 * 6, 160 * 6),
     };
     emu.init();
+    let opcodes_pre = load_json("opcodes_pre.json");
+    let opcodes_nopre = load_json("opcodes_nopre.json");
 }

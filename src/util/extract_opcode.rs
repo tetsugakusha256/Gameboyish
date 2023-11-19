@@ -61,8 +61,9 @@ pub fn load_json(file_path: &str) -> Result<Vec<Instruction>, Errors> {
 
     let test = data.unwrap();
     let vec_in_order: Vec<Instruction> = (0x00..=0xFF)
-        .map(|num| test.0.get(&format!("0x{:02X}", num)).cloned().unwrap())
+        .map(|num| return test.0.get(&format!("0x{:02X}", num)).cloned().unwrap())
         .collect();
+
     let mut hash: HashMap<String, bool> = HashMap::new();
     for instruction in &vec_in_order {
         if instruction.operands.len() != 0 {
@@ -73,9 +74,10 @@ pub fn load_json(file_path: &str) -> Result<Vec<Instruction>, Errors> {
             }
         }
     }
+    // println!("Test vec_in_order : {:?}", vec_in_order);
     for mnem in hash {
         // println!("{}", mnem.0);
     }
-    println!("test :{:?}", vec_in_order[0xAF]);
+    // println!("test :{:?}", vec_in_order[0xAF]);
     Ok(vec_in_order)
 }

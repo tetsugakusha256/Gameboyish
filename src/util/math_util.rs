@@ -8,13 +8,10 @@ pub fn signed_addition(a: u16, b: u8) -> (u16, bool, bool) {
     let signed_b: i32 = b as i8 as i32;
     let signed_a: i32 = a as i32;
     let result = signed_a + signed_b;
-    let mut overflow = false;
-    println!("sa :{} sb :{} a:{} b:{}", signed_a, signed_b, a, b);
-    println!("lowa:{} lowb:{}", a.low_4nibble(), b.low_4nibble());
+    let overflow = a.low_8nibble() as u16 + b as u16 >= 256;
     let half_carry = a.low_4nibble() + b.low_4nibble() >= 16;
     if signed_b > 0 {
         let result = a.wrapping_add(b as u16);
-        overflow = a.low_8nibble() as u16 + b as u16 >= 256;
         return (result, half_carry, overflow);
     }
     // Perform signed addition
@@ -47,7 +44,8 @@ pub fn addition(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
 /// return (result, halfcarry, carry)
 /// TODO: check what halfcarry means here and if/how subtraction should overflow
 pub fn subtraction(a: u8, b: u8) -> (u8, bool, bool, bool, bool) {
-    let (result, carry) = a.overflowing_sub(b);
+    let carry = a < b;
+    let result = a.wrapping_sub(b);
     let (_, halfcarry) = a.low_4nibble().overflowing_sub(b.low_4nibble());
     (result, result == 0, true, halfcarry, carry)
 }
@@ -66,13 +64,13 @@ pub fn adc(a: u8, b: u8, c: bool) -> (u8, bool, bool, bool, bool) {
 /// return (result,sub,zero halfcarry, carry)
 pub fn sbc(a: u8, b: u8, c: bool) -> (u8, bool, bool, bool, bool) {
     // First subtracting the carry on and check if it causes overflow or halfcarry
-    let mut b = b;
     let mut half_carry2 = false;
     let mut carry2 = false;
+    let mut res1 = a;
     if c {
-        (b, _, _, half_carry2, carry2) = subtraction(b, 1);
+        (res1, _, _, half_carry2, carry2) = subtraction(a, 1);
     }
-    let (result, z, _, halfcarry, carry) = subtraction(a, b);
+    let (result, z, _, halfcarry, carry) = subtraction(res1, b);
     (result, z, true, halfcarry | half_carry2, carry | carry2)
 }
 /// res,z,n,h
