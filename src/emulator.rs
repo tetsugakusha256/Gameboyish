@@ -32,7 +32,7 @@ impl Emulator {
         self.debug_screen.init("Debug");
         self.bus
             .borrow_mut()
-            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/Tetris (JUE) (V1.1) [!].gb")
+            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/07-jr,jp,call,ret,rst.gb")
             .unwrap();
         // Load boot rom
         self.bus.borrow_mut().init();
@@ -83,7 +83,7 @@ impl Emulator {
         }
         // self.screen.next_tick();
 
-        if self.cycles > 317321{
+        if self.cycles > 17558000{
             self.stop();
         }
     }
@@ -103,7 +103,7 @@ mod tests {
         let bus = Rc::new(RefCell::new(Bus::new()));
         let emu = Emulator {
             cpu: CPU::new(Rc::clone(&bus)),
-            ppu: PPU::new(VRAM::new(Rc::clone(&bus))),
+            ppu: PPU::new(Rc::clone(&bus)),
             io_handler: IOHandler::new(Rc::clone(&bus)),
             bus: Rc::clone(&bus),
             timer: Timer::new(),
@@ -125,15 +125,15 @@ mod tests {
             assert_eq!(slice, &[1, 2, 3]);
         }
         {
-            bus.borrow_mut().write_byte(0x00A0, 5);
+            bus.borrow_mut().write_byte_as_cpu(0x00A0, 5);
             let binding = bus.borrow();
-            let val = binding.read_byte(0x00A0);
+            let val = binding.read_byte_as_cpu(0x00A0);
             assert_eq!(val, 5);
         }
 
         bus.borrow_mut().write_slice(0x8000, &[2u8; 8192]);
         let binding = bus.borrow();
-        let val = binding.read_byte(0x8222);
+        let val = binding.read_byte_as_cpu(0x8222);
         assert_eq!(val, 2);
     }
 }

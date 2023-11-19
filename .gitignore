@@ -1,4 +1,4 @@
-/target
-/roms
-/log
-/boot_roms
+/target/
+/roms/
+/log/
+/boot_roms/

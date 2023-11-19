@@ -39,8 +39,8 @@ fn main() {
     // let cpu:CPU = CPU::new();
     let bus = Rc::new(RefCell::new(Bus::new()));
     let mut emu = Emulator {
-        cpu: CPU::new_doctor(Rc::clone(&bus)),
-        ppu: PPU::new(VRAM::new(Rc::clone(&bus))),
+        cpu: CPU::new(Rc::clone(&bus)),
+        ppu: PPU::new(Rc::clone(&bus)),
         io_handler: IOHandler::new(Rc::clone(&bus)),
         bus,
         timer: Timer::new(),

@@ -85,34 +85,32 @@ impl CPU {
             // self.cycles_since_last_cmd = 0;
 
             // Run next command
-            self.opcode = self.bus.borrow().read_byte(self.reg.pc);
-            println!("opcode {:#02x}", self.opcode);
+            self.opcode = self.bus.borrow().read_byte_as_cpu(self.reg.pc);
             if self.log_buffer.is_some() {
                 self.log_state_to_file();
             }
-            println!(
-                "Running code: {:#02x}, cycle: {}",
-                self.opcode, self.cycles_since_last_cmd
-            );
+            if self.cycles_since_last_cmd % 10000 == 0 {
+                println!(
+                    "Running code: {:#02x}, cycle: {}",
+                    self.opcode, self.cycles_since_last_cmd
+                );
+            }
             self.check_for_interupt();
             if !self.interupt_happened {
                 self.tick(self.opcode);
-                println!("running next tick");
             }
             self.interupt_happened = false;
         }
         self.cycles_since_last_cmd += 1;
         // Applying the next_pc mem that might have been altered by a jump operation
-        println!("Next_pc {:#04x}", self.next_pc);
         self.reg.pc = self.next_pc;
     }
     pub fn tick(&mut self, opcode: u8) {
         // Set next_pc mem according to instruction byte length might be assigned again by a jump
         self.next_pc = self.get_next_pc(opcode);
-        println!("Before tick: Next_pc {:#04x}", self.next_pc);
         if opcode == 0xCB {
             // Set opcode to next byte
-            let opcode = self.bus.borrow().read_byte(self.reg.get_pc_next());
+            let opcode = self.bus.borrow().read_byte_as_cpu(self.reg.get_pc_next());
             self.opcode_prefixed_tick(self.instruction_dict_prefixed[opcode as usize].clone());
         } else {
             self.opcode_noprefix_tick(
@@ -130,7 +128,7 @@ impl CPU {
         };
         let instruction = &dict[opcode as usize];
         // println!("instruction byte:{}, opcode:{}", instruction.bytes, &opcode);
-        println!("opcode:{}, opcode usize:{}", &opcode, opcode as usize);
+        // println!("opcode:{}, opcode usize:{}", &opcode, opcode as usize);
         // println!("instruction {}", instruction);
         // println!("instruction 0x01 {}", &dict[0x01]);
         // println!("instruction 1 {}", &dict[1]);
@@ -312,7 +310,7 @@ impl CPU {
             | NopreOperands::E
             | NopreOperands::L
             | NopreOperands::H => f(reg.get(&target_operand)),
-            NopreOperands::HL => f(bus.read_byte(reg.hl)),
+            NopreOperands::HL => f(bus.read_byte_as_cpu(reg.hl)),
             NopreOperands::n8 => f(bus.read_next_byte(reg.pc)),
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
@@ -329,7 +327,7 @@ impl CPU {
             | NopreOperands::E
             | NopreOperands::L
             | NopreOperands::H => reg.set_byte_reg(&target_operand, new_value),
-            NopreOperands::HL => bus.write_byte(reg.hl, new_value),
+            NopreOperands::HL => bus.write_byte_as_cpu(reg.hl, new_value),
             NopreOperands::n8 => bus.write_next_byte(reg.pc, new_value),
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
@@ -512,7 +510,7 @@ impl CPU {
             | NopreOperands::D
             | NopreOperands::E
             | NopreOperands::H => compare(a, reg.get(&target_operand)),
-            NopreOperands::HL => compare(a, bus.read_byte(reg.hl)),
+            NopreOperands::HL => compare(a, bus.read_byte_as_cpu(reg.hl)),
             NopreOperands::n8 => compare(a, bus.read_next_byte(reg.pc)),
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
@@ -537,7 +535,7 @@ impl CPU {
             | NopreOperands::E
             | NopreOperands::L
             | NopreOperands::H => f(a, reg.get(&target_operand), carry),
-            NopreOperands::HL => f(a, bus.read_byte(reg.hl), carry),
+            NopreOperands::HL => f(a, bus.read_byte_as_cpu(reg.hl), carry),
             NopreOperands::n8 => f(a, bus.read_next_byte(reg.pc), carry),
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
@@ -563,7 +561,7 @@ impl CPU {
             | NopreOperands::E
             | NopreOperands::L
             | NopreOperands::H => f(a, reg.get(&target_operand)),
-            NopreOperands::HL => f(a, bus.read_byte(reg.hl)),
+            NopreOperands::HL => f(a, bus.read_byte_as_cpu(reg.hl)),
             NopreOperands::n8 => f(a, bus.read_next_byte(reg.pc)),
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
@@ -721,16 +719,16 @@ impl CPU {
             // NopreOperands::a8 => bus.read_next_byte(reg.pc + instruction_byte_size),
             // WARN: check a8 not what is described
             NopreOperands::a8 => bus.read_a8(bus.read_next_byte(reg.pc)),
-            NopreOperands::BC => bus.read_byte(reg.bc),
+            NopreOperands::BC => bus.read_byte_as_cpu(reg.bc),
             //check if c or [c] with bytes?,
             NopreOperands::C => {
                 if from.immediate {
                     reg.get_c()
                 } else {
-                    bus.read_byte(0xFF00 + reg.get_c() as u16)
+                    bus.read_byte_as_cpu(0xFF00 + reg.get_c() as u16)
                 }
             }
-            NopreOperands::DE => bus.read_byte(reg.de),
+            NopreOperands::DE => bus.read_byte_as_cpu(reg.de),
             NopreOperands::HL => {
                 let hl_mem = reg.hl.clone();
                 if from.increment.is_some() {
@@ -738,7 +736,7 @@ impl CPU {
                 } else if from.decrement.is_some() {
                     reg.hl_minus();
                 }
-                bus.read_byte(hl_mem)
+                bus.read_byte_as_cpu(hl_mem)
             }
             NopreOperands::n8 => bus.read_next_byte(reg.pc),
             NopreOperands::a16 => bus.get_a16_value(reg.pc),
@@ -750,12 +748,12 @@ impl CPU {
             // Ok!
             NopreOperands::a16 => {
                 let a16 = bus.get_a16_address(reg.pc);
-                bus.write_byte(a16, value)
+                bus.write_byte_as_cpu(a16, value)
             }
             // Ok!
             NopreOperands::a8 => {
                 let a8_add = get_a8_address(bus.read_next_byte(reg.pc));
-                bus.write_byte(a8_add, value)
+                bus.write_byte_as_cpu(a8_add, value)
             }
             NopreOperands::B => reg.set_b(value),
             //check if c or [c] with bytes?,
@@ -763,7 +761,7 @@ impl CPU {
                 if into.immediate {
                     reg.set_c(value)
                 } else {
-                    bus.write_byte(0xFF00 + reg.get_c() as u16, value)
+                    bus.write_byte_as_cpu(0xFF00 + reg.get_c() as u16, value)
                 }
             }
             NopreOperands::D => reg.set_d(value),
@@ -771,15 +769,15 @@ impl CPU {
             NopreOperands::H => reg.set_h(value),
             NopreOperands::HL => {
                 // TODO: extract logic
-                bus.write_byte(reg.hl, value);
+                bus.write_byte_as_cpu(reg.hl, value);
                 if into.increment.is_some() {
                     reg.hl_plus();
                 } else if into.decrement.is_some() {
                     reg.hl_minus();
                 }
             }
-            NopreOperands::BC => bus.write_byte(reg.bc, value),
-            NopreOperands::DE => bus.write_byte(reg.de, value),
+            NopreOperands::BC => bus.write_byte_as_cpu(reg.bc, value),
+            NopreOperands::DE => bus.write_byte_as_cpu(reg.de, value),
             NopreOperands::L => reg.set_l(value),
             NopreOperands::INVALID => panic!("Invalid operands"),
 
@@ -805,7 +803,7 @@ impl CPU {
             NopreOperands::E => f(reg.get_e(), bit_number),
             NopreOperands::H => f(reg.get_h(), bit_number),
             NopreOperands::L => f(reg.get_l(), bit_number),
-            NopreOperands::HL => f(bus.read_byte(reg.hl), bit_number),
+            NopreOperands::HL => f(bus.read_byte_as_cpu(reg.hl), bit_number),
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for res/set ?"),
         };
@@ -832,7 +830,7 @@ impl CPU {
             NopreOperands::E => f(reg.get_e(), bit_number),
             NopreOperands::H => f(reg.get_h(), bit_number),
             NopreOperands::L => f(reg.get_l(), bit_number),
-            NopreOperands::HL => f(bus.read_byte(reg.hl), bit_number),
+            NopreOperands::HL => f(bus.read_byte_as_cpu(reg.hl), bit_number),
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for res/set ?"),
         };
@@ -853,7 +851,7 @@ impl CPU {
             NopreOperands::E => f(reg.get_e(), carry),
             NopreOperands::H => f(reg.get_h(), carry),
             NopreOperands::L => f(reg.get_l(), carry),
-            NopreOperands::HL => f(bus.read_byte(reg.hl), carry),
+            NopreOperands::HL => f(bus.read_byte_as_cpu(reg.hl), carry),
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
         };
@@ -867,7 +865,7 @@ impl CPU {
             NopreOperands::E => reg.set_e(new_value),
             NopreOperands::H => reg.set_h(new_value),
             NopreOperands::L => reg.set_l(new_value),
-            NopreOperands::HL => bus.write_byte(reg.hl, new_value),
+            NopreOperands::HL => bus.write_byte_as_cpu(reg.hl, new_value),
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
         };
@@ -889,7 +887,7 @@ impl CPU {
             NopreOperands::E => f(reg.get_e()),
             NopreOperands::H => f(reg.get_h()),
             NopreOperands::L => f(reg.get_l()),
-            NopreOperands::HL => f(bus.read_byte(reg.hl)),
+            NopreOperands::HL => f(bus.read_byte_as_cpu(reg.hl)),
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
         };
@@ -903,29 +901,29 @@ impl CPU {
             NopreOperands::E => reg.set_e(new_value),
             NopreOperands::H => reg.set_h(new_value),
             NopreOperands::L => reg.set_l(new_value),
-            NopreOperands::HL => bus.write_byte(reg.hl, new_value),
+            NopreOperands::HL => bus.write_byte_as_cpu(reg.hl, new_value),
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for add 8bit?"),
         };
     }
     fn check_for_interupt(&mut self) {
-        println!(
-            "Check interupt current interupt: {}, ime: {}, interupt flag: {}, interupt enable: {}",
-            self.current_interupt.is_none(),
-            self.ime,
-            self.interupt_reg.get_interupt_flag(),
-            self.interupt_reg.get_interupt_enable()
-        );
+        // println!(
+        //     "Check interupt current interupt: {}, ime: {}, interupt flag: {}, interupt enable: {}",
+        //     self.current_interupt.is_none(),
+        //     self.ime,
+        //     self.interupt_reg.get_interupt_flag(),
+        //     self.interupt_reg.get_interupt_enable()
+        // );
         if self.current_interupt.is_none() {
             if self.ime {
                 self.current_interupt = self.interupt_reg.query_interupts_flag_enable();
             }
         }
         if self.current_interupt.is_some() {
-            println!(
-                "let's goo interupt : {:?}",
-                self.current_interupt.as_ref().unwrap()
-            );
+            // println!(
+            //     "let's goo interupt : {:?}",
+            //     self.current_interupt.as_ref().unwrap()
+            // );
             // push current pc on stack
             let reg = &mut self.reg;
 
@@ -946,7 +944,7 @@ impl CPU {
             // TODO: I don't understand but apparenty I need this?
             self.next_pc += 1;
 
-            println!("next_pc in check interupt : {:#04x}", self.next_pc);
+            // println!("next_pc in check interupt : {:#04x}", self.next_pc);
             self.ime = false;
             self.interupt_reg.reset_flag(current_interupt);
             self.interupt_stage = 0;
@@ -1031,10 +1029,10 @@ impl CPU {
                     reg.get_l(),
                     reg.sp,
                     reg.pc,
-                    bus.read_byte(reg.pc),
-                    bus.read_byte(reg.pc.wrapping_add(1)),
-                    bus.read_byte(reg.pc.wrapping_add(2)),
-                    bus.read_byte(reg.pc.wrapping_add(3)),
+                    bus.read_byte_as_cpu(reg.pc),
+                    bus.read_byte_as_cpu(reg.pc.wrapping_add(1)),
+                    bus.read_byte_as_cpu(reg.pc.wrapping_add(2)),
+                    bus.read_byte_as_cpu(reg.pc.wrapping_add(3)),
                 );
                 text = text.to_string().replace("0x", "");
                 text = text.to_uppercase();
@@ -1068,7 +1066,7 @@ mod tests {
             assert_eq!(slice, &[1, 2, 3]);
         }
         {
-            cpu2.bus.borrow_mut().write_byte(0xFF00, 7);
+            cpu2.bus.borrow_mut().write_byte_as_cpu(0xFF00, 7);
             let binding = cpu2.bus.borrow();
             let slice = binding.read_bytes_range(0xFF00, 3);
             assert_eq!(slice, &[7, 0, 0]);

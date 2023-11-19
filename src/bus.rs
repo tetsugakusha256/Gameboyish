@@ -1,5 +1,5 @@
 use crate::{
-    ppu::VideoMemBlock,
+    ppu::{PPUModes, VideoMemBlock},
     util::{
         cartridge_util::load,
         error_type::Errors,
@@ -29,6 +29,18 @@ impl VRAM {
             wx: bus.read_byte(0xFF4B),
         }
     }
+    pub fn lock_oam(&mut self) {
+        self.bus.borrow_mut().lock_oam();
+    }
+    pub fn unlock_oam(&mut self) {
+        self.bus.borrow_mut().unlock_oam();
+    }
+    pub fn lock_vram(&mut self) {
+        self.bus.borrow_mut().lock_vram();
+    }
+    pub fn unlock_vram(&mut self) {
+        self.bus.borrow_mut().unlock_vram();
+    }
     pub fn get_lcd_control(&self) -> LCDControlReg {
         LCDControlReg {
             byte: self.bus.borrow().read_byte(0xFF40),
@@ -40,6 +52,7 @@ impl VRAM {
     pub fn get_ly(&self) -> u8 {
         self.bus.borrow().read_byte(0xFF44)
     }
+    // get all 40 objects OAMSprite
     pub fn get_oam_sprites_vec(&self) -> Vec<OAMSprite> {
         let mut oam_vec = vec![];
         let oam_mem_start = 0xFE00;
@@ -54,33 +67,36 @@ impl VRAM {
         }
         oam_vec
     }
-    pub fn win_tile_map_vec(&self, bus: &Bus) -> Vec<u8> {
+    pub fn win_tile_map_vec(&self) -> Vec<u8> {
         let address;
         if self.get_lcd_control().win_tile_map() {
             address = 0x9C00u16;
         } else {
             address = 0x9800u16;
         }
-        bus.read_bytes_range(address, 1024).to_vec()
+        self.bus.borrow().read_bytes_range(address, 1024).to_vec()
     }
-    pub fn bg_tile_map_vec(&self, bus: &Bus) -> Vec<u8> {
+    pub fn bg_tile_map_vec(&self) -> Vec<u8> {
         let address;
         if self.get_lcd_control().bg_tile_map() {
             address = 0x9C00u16;
         } else {
             address = 0x9800u16;
         }
-        bus.read_bytes_range(address, 1024).to_vec()
+        self.bus.borrow().read_bytes_range(address, 1024).to_vec()
     }
     // Return active Background tile memory
-    pub fn bg_win_tile_memory_vec(&self, bus: &Bus) -> Vec<u8> {
+    pub fn bg_win_tile_memory_vec(&self) -> Vec<u8> {
         let address;
         if self.get_lcd_control().bg_win_tiles() {
             address = 0x8000u16;
         } else {
             address = 0x8800u16;
         }
-        bus.read_bytes_range(address, 2 * 2048).to_vec()
+        self.bus
+            .borrow()
+            .read_bytes_range(address, 2 * 2048)
+            .to_vec()
     }
 }
 pub struct BackgroundReg {
@@ -110,6 +126,13 @@ impl From<u8> for InteruptType {
             _ => panic!("Invalid Interupt Type"),
         }
     }
+}
+pub enum StatInteruptType {
+    Mode0,
+    Mode1,
+    Mode2,
+    LYCEqualLY,
+    None,
 }
 // Interupt flags and enabled status
 pub struct InteruptReg {
@@ -152,34 +175,34 @@ impl InteruptReg {
 
     pub fn set_joypad_flag(&mut self, value: bool) {
         let mut bus = self.bus.borrow_mut();
-        let mut mem = bus.read_byte(0xFFFF);
+        let mut mem = bus.read_byte_as_cpu(0xFFFF);
         mem.set_bit(4, value);
-        bus.write_byte(0xFFFF, mem);
+        bus.write_byte_as_cpu(0xFFFF, mem);
     }
     pub fn set_serial_flag(&mut self, value: bool) {
         let mut bus = self.bus.borrow_mut();
-        let mut mem = bus.read_byte(0xFFFF);
+        let mut mem = bus.read_byte_as_cpu(0xFFFF);
         mem.set_bit(3, value);
-        bus.write_byte(0xFFFF, mem);
+        bus.write_byte_as_cpu(0xFFFF, mem);
     }
     pub fn set_timer_flag(&mut self, value: bool) {
         let mut bus = self.bus.borrow_mut();
-        let mut mem = bus.read_byte(0xFFFF);
+        let mut mem = bus.read_byte_as_cpu(0xFFFF);
         mem.set_bit(2, value);
-        bus.write_byte(0xFFFF, mem);
+        bus.write_byte_as_cpu(0xFFFF, mem);
     }
     pub fn set_lcd_flag(&mut self, value: bool) {
         let mut bus = self.bus.borrow_mut();
-        let mut mem = bus.read_byte(0xFFFF);
+        let mut mem = bus.read_byte_as_cpu(0xFFFF);
         mem.set_bit(1, value);
-        bus.write_byte(0xFFFF, mem);
+        bus.write_byte_as_cpu(0xFFFF, mem);
     }
     pub fn set_vblank_flag(&mut self, value: bool) {
         let mut bus = self.bus.borrow_mut();
-        let mut mem = bus.read_byte(0xFFFF);
+        let mut mem = bus.read_byte_as_cpu(0xFFFF);
         mem.set_bit(0, value);
         println!("mem: {}", mem);
-        bus.write_byte(0xFFFF, mem);
+        bus.write_byte_as_cpu(0xFFFF, mem);
     }
     pub fn get_joypad_flag(&self) -> bool {
         self.get_interupt_flag().get_bit(4)
@@ -197,10 +220,10 @@ impl InteruptReg {
         self.get_interupt_flag().get_bit(0)
     }
     pub fn get_interupt_enable(&self) -> u8 {
-        self.bus.borrow().read_byte(0xFF0F)
+        self.bus.borrow().read_byte_as_cpu(0xFF0F)
     }
     pub fn get_interupt_flag(&self) -> u8 {
-        self.bus.borrow().read_byte(0xFFFF)
+        self.bus.borrow().read_byte_as_cpu(0xFFFF)
     }
     pub fn is_joypad_enable(&self) -> bool {
         self.get_interupt_enable().get_bit(4)
@@ -216,6 +239,65 @@ impl InteruptReg {
     }
     pub fn is_vblank_enable(&self) -> bool {
         self.get_interupt_enable().get_bit(0)
+    }
+}
+pub struct LCDStatusReg {
+    bus: Rc<RefCell<Bus>>,
+}
+impl LCDStatusReg {
+    pub fn new(bus: Rc<RefCell<Bus>>) -> LCDStatusReg {
+        LCDStatusReg { bus }
+    }
+    pub fn get_lyc(&self) -> u8 {
+        self.bus.borrow().read_byte(0xFF44)
+    }
+    pub fn set_ppu_mode(&mut self, mode: PPUModes) {
+        let mut bus = self.bus.borrow_mut();
+        let (bit_1, bit_0) = match mode {
+            PPUModes::Mode0 => (false, false),
+            PPUModes::Mode1 => (false, true),
+            PPUModes::Mode2 => (true, false),
+            PPUModes::Mode3 => (true, true),
+        };
+        bus.write_bit(0xFF41, 0, bit_0);
+        bus.write_bit(0xFF41, 1, bit_1);
+    }
+    pub fn set_lyc_ly(&mut self, value: bool) {
+        self.bus.borrow_mut().write_bit(0xFF41, 2, value);
+    }
+    pub fn get_stat_mode(&self) -> StatInteruptType {
+        let mut byte = self.bus.borrow().read_byte(0xFF41).clone();
+        byte = byte >> 2;
+        for i in 0..=3 {
+            if byte >> i & 0x0000_0001 == 1 {
+                return match i {
+                    0 => StatInteruptType::Mode0,
+                    1 => StatInteruptType::Mode1,
+                    2 => StatInteruptType::Mode2,
+                    3 => StatInteruptType::LYCEqualLY,
+                    _ => panic!("impossible stat"),
+                };
+            }
+        }
+        StatInteruptType::None
+    }
+}
+pub struct WinBackPosReg {
+    bus: Rc<RefCell<Bus>>,
+}
+impl WinBackPosReg {
+    pub fn new(bus: Rc<RefCell<Bus>>) -> WinBackPosReg {
+        WinBackPosReg { bus }
+    }
+    /// Return (scx, scy)
+    pub fn get_window_pos(&self) -> (u8,u8){
+        let bus = self.bus.borrow();
+        return (bus.read_byte(0xFF4B),bus.read_byte(0xFF4A))
+    }
+    /// Return (scx, scy)
+    pub fn get_background_scroll(&self) -> (u8,u8){
+        let bus = self.bus.borrow();
+        return (bus.read_byte(0xFF43),bus.read_byte(0xFF42))
     }
 }
 pub struct LCDControlReg {
@@ -271,6 +353,8 @@ impl OAMSprite {
 pub struct Bus {
     pub data: [u8; 0x1_0000],
     pub video_mem_block: VideoMemBlock,
+    vram_lock: bool,
+    oam_lock: bool,
 }
 impl std::fmt::Display for Bus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -306,6 +390,8 @@ impl Bus {
         Bus {
             data: [0x00; 0x1_0000],
             video_mem_block: VideoMemBlock::None,
+            vram_lock: false,
+            oam_lock: false,
         }
     }
     pub fn init(&mut self) {
@@ -324,29 +410,38 @@ impl Bus {
         Ok(())
     }
     pub fn read_a8(&self, offset: u8) -> u8 {
-        return self.read_byte(0xFF00 + offset as u16);
+        return self.read_byte_as_cpu(0xFF00 + offset as u16);
     }
     pub fn read_byte(&self, address: u16) -> u8 {
-        // temporary gamedoctor thing
-        if address == 0xFF44 {
-            return 0x90;
-        }
         let add = address as usize;
         return self.data[add];
+    }
+    pub fn read_byte_as_cpu(&self, address: u16) -> u8 {
+        // temporary gamedoctor thing
+        // if address == 0xFF44 {
+        //     return 0x90;
+        // }
+        if self.vram_lock && (0x8000..=0x9FFF).contains(&address) {
+            return 0x90;
+        }
+        if self.oam_lock && (0xFE00..=0xFE9F).contains(&address) {
+            return 0x90;
+        }
+        return self.read_byte(address);
     }
     pub fn read_2_bytes_from_little_endian_address(&self, address: u16) -> u8 {
         let high = address.high_8nibble();
         let low = address.high_8nibble();
         let small_endian_address = ((low as u16) << 8) + (high as u16);
         // Doctor
-        if small_endian_address == 0xFF44 {
-            return 0x90;
-        }
-        self.read_byte(small_endian_address)
+        // if small_endian_address == 0xFF44 {
+        //     return 0x90;
+        // }
+        self.read_byte_as_cpu(small_endian_address)
     }
     pub fn read_2_bytes_little_endian(&self, address: u16) -> u16 {
-        let low = self.read_byte(address);
-        let high = self.read_byte(address + 1);
+        let low = self.read_byte_as_cpu(address);
+        let high = self.read_byte_as_cpu(address + 1);
         ((high as u16) << 8) + (low as u16)
     }
 
@@ -364,7 +459,7 @@ impl Bus {
         if address == 0xFFFF {
             panic!()
         }
-        self.read_byte(address + 0x0001)
+        self.read_byte_as_cpu(address + 0x0001)
     }
     /// TODO: check that I understand correctly the little endian here
     pub fn get_a16_address(&self, pc: u16) -> u16 {
@@ -375,7 +470,7 @@ impl Bus {
     }
     /// TODO: check that I understand correctly the little endian here
     pub fn get_a16_value(&self, pc: u16) -> u8 {
-        self.read_byte(self.get_a16_address(pc))
+        self.read_byte_as_cpu(self.get_a16_address(pc))
     }
     pub fn write_a16(&mut self, pc: u16, value: u16) {
         self.write_2_bytes_little_endian(self.get_a16_address(pc), value)
@@ -385,11 +480,23 @@ impl Bus {
         if address == 0xFFFF {
             panic!("trying to read out of bus");
         }
-        self.write_byte(address + 0x0001, value);
+        self.write_byte_as_cpu(address + 0x0001, value);
     }
 
     pub fn write_byte(&mut self, address: u16, value: u8) {
         self.data[address as usize] = value;
+    }
+    pub fn write_byte_as_cpu(&mut self, address: u16, value: u8) {
+        if address == 0xFF44 {
+            return;
+        }
+        if self.vram_lock && (0x8000..=0x9FFF).contains(&address) {
+            return;
+        }
+        if self.oam_lock && (0xFE00..=0xFE9F).contains(&address) {
+            return;
+        }
+        self.write_byte(address, value)
     }
     //TODO: should the write happen in little endian?
     //I feel like it should be the same as the load method
@@ -413,6 +520,23 @@ impl Bus {
         let data_slice = &mut self.data[add..add_end];
         data_slice.copy_from_slice(slice);
     }
+    pub fn lock_vram(&mut self) {
+        self.vram_lock = true;
+    }
+    pub fn unlock_vram(&mut self) {
+        self.vram_lock = false;
+    }
+    pub fn lock_oam(&mut self) {
+        self.oam_lock = true;
+    }
+    pub fn unlock_oam(&mut self) {
+        self.oam_lock = false;
+    }
+    pub fn write_bit(&mut self, address: u16, bit: u8, value: bool) {
+        let mut mem = self.read_byte(address);
+        mem.set_bit(bit, value);
+        self.write_byte(address, mem);
+    }
 
     // 0-7 line
     fn get_tile_x_line_2bytes(&self, address: u16, line: u8) -> (u8, u8) {
@@ -420,7 +544,10 @@ impl Bus {
             panic!("Error");
         }
         let i = (line * 2) as u16;
-        (self.read_byte(address + i), self.read_byte(address + i + 1))
+        (
+            self.read_byte_as_cpu(address + i),
+            self.read_byte_as_cpu(address + i + 1),
+        )
     }
 }
 
@@ -435,19 +562,19 @@ mod tests {
         bus.data[0x0003] = 0xFF;
         bus.data[0xF003] = 0xFC;
         bus.data[0xFFFF] = 0xFC;
-        assert_eq!(bus.read_byte(0x0003), 0xFF);
-        assert_eq!(bus.read_byte(0x0001), 0x00);
-        assert_eq!(bus.read_byte(0xF003), 0xFC);
-        assert_eq!(bus.read_byte(0xFFFF), 0xFC);
+        assert_eq!(bus.read_byte_as_cpu(0x0003), 0xFF);
+        assert_eq!(bus.read_byte_as_cpu(0x0001), 0x00);
+        assert_eq!(bus.read_byte_as_cpu(0xF003), 0xFC);
+        assert_eq!(bus.read_byte_as_cpu(0xFFFF), 0xFC);
 
-        assert_ne!(bus.read_byte(0x0000), 0xA0);
+        assert_ne!(bus.read_byte_as_cpu(0x0000), 0xA0);
     }
     #[test]
     fn test_write() {
         let mut bus = Bus::new();
-        assert_ne!(bus.read_byte(0x0010), 0x12);
-        bus.write_byte(0x0010, 0x12);
-        assert_eq!(bus.read_byte(0x0010), 0x12);
+        assert_ne!(bus.read_byte_as_cpu(0x0010), 0x12);
+        bus.write_byte_as_cpu(0x0010, 0x12);
+        assert_eq!(bus.read_byte_as_cpu(0x0010), 0x12);
     }
     #[test]
     fn read_slice() {
@@ -485,7 +612,7 @@ mod tests {
             bus.read_bytes_range(0x0000, 5),
             &[0x31, 0xfe, 0xff, 0xaf, 0x21]
         );
-        assert_eq!(bus.read_byte(0x00FF), 0x50);
+        assert_eq!(bus.read_byte_as_cpu(0x00FF), 0x50);
     }
     // #[test]
     // fn get_tile_x_line_2bytes_test() {
@@ -500,20 +627,37 @@ mod tests {
         assert_eq!(bus.get_a16_address(0x0010), 0x0110);
     }
     #[test]
+    fn cpu_lock_test() {
+        let mut bus = Bus::new();
+        bus.write_slice(0x0010, &[0x00, 0x10, 0x01]);
+        assert_eq!(bus.read_byte_as_cpu(0x8000), 0);
+        assert_eq!(bus.read_byte_as_cpu(0x9FFF), 0);
+        assert_eq!(bus.read_byte_as_cpu(0x9F00), 0);
+        bus.lock_vram();
+        assert_eq!(bus.read_byte_as_cpu(0x8000), 0x90);
+        assert_eq!(bus.read_byte_as_cpu(0x9FFF), 0x90);
+        assert_eq!(bus.read_byte(0x9FFF), 0);
+        assert_eq!(bus.read_byte_as_cpu(0x9F00), 0x90);
+        bus.unlock_vram();
+        assert_eq!(bus.read_byte_as_cpu(0x8000), 0);
+        assert_eq!(bus.read_byte_as_cpu(0x9FFF), 0);
+        assert_eq!(bus.read_byte_as_cpu(0x9F00), 0);
+    }
+    #[test]
     fn reset_flag_test() {
         let bus_rc = Rc::new(RefCell::new(Bus::new()));
         let mut interupt_reg = InteruptReg::new(Rc::clone(&bus_rc));
         {
             let mut bus = bus_rc.borrow_mut();
-            println!("0xFFFF: {}", bus.read_byte(0xFFFF));
-            bus.write_byte(0xFFFF, 0b0000_0001);
-            println!("0xFFFF: {}", bus.read_byte(0xFFFF));
+            println!("0xFFFF: {}", bus.read_byte_as_cpu(0xFFFF));
+            bus.write_byte_as_cpu(0xFFFF, 0b0000_0001);
+            println!("0xFFFF: {}", bus.read_byte_as_cpu(0xFFFF));
         }
         interupt_reg.reset_flag(&InteruptType::VBlank);
         {
             let mut bus = bus_rc.borrow_mut();
-            println!("0xFFFF: {}", bus.read_byte(0xFFFF));
-            assert_eq!(bus.read_byte(0xFFFF), 0b0000_0000);
+            println!("0xFFFF: {}", bus.read_byte_as_cpu(0xFFFF));
+            assert_eq!(bus.read_byte_as_cpu(0xFFFF), 0b0000_0000);
         }
     }
 }
