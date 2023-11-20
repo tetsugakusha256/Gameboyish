@@ -6,7 +6,7 @@ use crate::{
     io_handler::IOHandler,
     ppu::PPU,
     util::tiles_util::{vram_to_screen, ScreenVector},
-    windows::game_window::GameWindow, quartz::Timer,
+    windows::game_window::GameWindow, quartz::Quartz,
 };
 #[derive(PartialEq, Eq)]
 pub enum EmulatorState {
@@ -19,7 +19,7 @@ pub struct Emulator {
     pub ppu: PPU,
     pub io_handler: IOHandler,
     pub bus: Rc<RefCell<Bus>>,
-    pub timer: Timer,
+    pub timer: Quartz,
     pub state: EmulatorState,
     pub cycles: u64,
     pub screen: GameWindow,
@@ -105,7 +105,7 @@ mod tests {
         io_handler::IOHandler,
         ppu::PPU,
         register::Registers,
-        windows::game_window::GameWindow, quartz::Timer,
+        windows::game_window::GameWindow, quartz::Quartz,
     };
     use std::{cell::RefCell, rc::Rc};
 
@@ -117,7 +117,7 @@ mod tests {
             ppu: PPU::new(Rc::clone(&bus)),
             io_handler: IOHandler::new(Rc::clone(&bus)),
             bus: Rc::clone(&bus),
-            timer: Timer::new(),
+            timer: Quartz::new(),
             state: EmulatorState::Running,
             cycles: 0,
             screen: GameWindow::new(400, 400),

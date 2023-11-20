@@ -3,20 +3,20 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub struct Timer {
+pub struct Quartz {
     frequency: u32,
     delta_step: u128,
     last_time: Instant,
 }
-impl Timer {
-    pub fn new() -> Timer {
+impl Quartz {
+    pub fn new() -> Quartz {
         // True value
         let frequency = 4194304u32;
         // Slower value
         // let frequency = 60000u32;
-        Timer {
+        Quartz {
             frequency,
-            delta_step: Timer::step_length_nanosec(frequency),
+            delta_step: Quartz::step_length_nanosec(frequency),
             last_time: Instant::now(),
         }
     }
@@ -43,12 +43,12 @@ impl Timer {
 }
 #[cfg(test)]
 mod tests {
-    use crate::quartz::Timer;
+    use crate::quartz::Quartz;
 
 
     #[test]
     fn delta_step_test() {
-        let timer = Timer::new();
+        let timer = Quartz::new();
         println!("tMIEME: {:?}", timer.delta_step);
         assert_eq!(238, timer.delta_step);
     }

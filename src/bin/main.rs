@@ -8,7 +8,7 @@ use game_boyish::{
         cartridge_util::{check_checksum, load, print_header},
         extract_opcode::load_json,
     },
-    windows::game_window::GameWindow, quartz::Timer,
+    windows::game_window::GameWindow, quartz::Quartz,
 };
 use std::{cell::RefCell, rc::Rc};
 
@@ -42,7 +42,7 @@ fn main() {
         ppu: PPU::new(Rc::clone(&bus)),
         io_handler: IOHandler::new(Rc::clone(&bus)),
         bus,
-        timer: Timer::new(),
+        timer: Quartz::new(),
         state: EmulatorState::Running,
         cycles: 0,
         screen: GameWindow::new(144 * 6, 160 * 6),
