@@ -5,9 +5,8 @@ use crate::{
     cpu::CPU,
     io_handler::IOHandler,
     ppu::PPU,
-    timer::Timer,
     util::tiles_util::{vram_to_screen, ScreenVector},
-    windows::game_window::GameWindow,
+    windows::game_window::GameWindow, quartz::Timer,
 };
 #[derive(PartialEq, Eq)]
 pub enum EmulatorState {
@@ -32,12 +31,10 @@ impl Emulator {
         self.debug_screen.init("Debug");
         self.bus
             .borrow_mut()
-            .load_cartridge(
-                "/home/anon/Documents/Code/GameBoyish/roms/Dr. Mario (JU) (V1.1).gb",
-            )
+            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/02-interrupts.gb")
             .unwrap();
         // Load boot rom
-        self.bus.borrow_mut().init();
+        // self.bus.borrow_mut().init();
         // Activate logging
         // self.cpu.init_with_log();
 
@@ -52,14 +49,23 @@ impl Emulator {
         self.state = EmulatorState::Stopped;
     }
 
-    pub fn pause_resume() {}
+    pub fn pause_resume(&mut self) {
+        let state = &self.state;
+        self.state = match state {
+            EmulatorState::Running => EmulatorState::Paused,
+            EmulatorState::Paused => EmulatorState::Running,
+            EmulatorState::Stopped => EmulatorState::Stopped,
+        }
+    }
     // main emulator loop
     fn main_loop(&mut self) {
         if self.state == EmulatorState::Running {
             loop {
                 self.timer.wait_till_next_tick();
-                self.update_emulator_state();
-                if self.state != EmulatorState::Running {
+                if self.state == EmulatorState::Running {
+                    self.update_emulator_state();
+                }
+                if self.state == EmulatorState::Stopped {
                     break;
                 }
             }
@@ -74,7 +80,7 @@ impl Emulator {
         // then read the value (How many cycles in between those?)
         // self.io_handler.next_tick();
         self.cpu.next_tick();
-        self.ppu.next_tick();
+        // self.ppu.next_tick();
         // self.bus.borrow_mut().write_slice(0x8000, &[0x56u8;8192]);
 
         if self.cycles % 1000 == 0 {
@@ -85,7 +91,7 @@ impl Emulator {
             self.screen.next_tick(&self.ppu.screen_array);
         }
 
-        if self.cycles > 3142300 {
+        if self.cycles > 152008 {
             self.stop();
         }
     }
@@ -99,8 +105,7 @@ mod tests {
         io_handler::IOHandler,
         ppu::PPU,
         register::Registers,
-        timer::Timer,
-        windows::game_window::GameWindow,
+        windows::game_window::GameWindow, quartz::Timer,
     };
     use std::{cell::RefCell, rc::Rc};
 

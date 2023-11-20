@@ -86,23 +86,28 @@ impl CPU {
 
             // Run next command
             self.opcode = self.bus.borrow().read_byte_as_cpu(self.reg.pc);
+            self.check_for_interupt();
+
+            // if interupt update opcode
+            if self.interupt_happened {
+                self.interupt_happened = false;
+                self.reg.pc = self.next_pc;
+                self.opcode = self.bus.borrow().read_byte_as_cpu(self.reg.pc);
+            }
             if self.log_buffer.is_some() {
                 self.log_state_to_file();
             }
             if self.cycles_since_last_cmd % 1 == 0 {
                 println!(
-                    "Running code: {:#02x}, cycle: {}",
-                    self.opcode, self.cycles_since_last_cmd
+                    "Running code: {:#02x}, cycle: {}, pc: {}",
+                    self.opcode, self.cycles_since_last_cmd, self.reg.pc
                 );
             }
-            self.check_for_interupt();
-            if !self.interupt_happened {
-                self.tick(self.opcode);
-            }
-            self.interupt_happened = false;
+            self.tick(self.opcode);
         }
         self.cycles_since_last_cmd += 1;
         // Applying the next_pc mem that might have been altered by a jump operation
+        println!("pc: {}, next pc: {}", self.reg.pc, self.next_pc);
         self.reg.pc = self.next_pc;
     }
     pub fn tick(&mut self, opcode: u8) {
@@ -549,10 +554,12 @@ impl CPU {
     where
         F: Fn(u8, u8) -> (u8, bool, bool, bool, bool),
     {
+        // println!("Instruction: {:?}", instruction);
         let target_operand = instruction.operands[1].name.clone().into();
         let bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         let a = reg.get_a();
+        // println!("(HL): {:#04x}",bus.read_byte_as_cpu(reg.hl));
         let result = match target_operand {
             NopreOperands::A
             | NopreOperands::B
@@ -567,6 +574,7 @@ impl CPU {
             _ => panic!("Missing operand for add 8bit?"),
         };
         let (new_a, z, n, h, c) = result;
+        println!("New a: {:#04x}", new_a);
         reg.set_flags(z, n, h, c);
         reg.set_a(new_a);
     }
@@ -907,23 +915,23 @@ impl CPU {
         };
     }
     fn check_for_interupt(&mut self) {
-        // println!(
-        //     "Check interupt current interupt: {}, ime: {}, interupt flag: {}, interupt enable: {}",
-        //     self.current_interupt.is_none(),
-        //     self.ime,
-        //     self.interupt_reg.get_interupt_flag(),
-        //     self.interupt_reg.get_interupt_enable()
-        // );
+        println!(
+            "Check interupt current interupt: {}, ime: {}, interupt flag: {}, interupt enable: {}",
+            self.current_interupt.is_none(),
+            self.ime,
+            self.interupt_reg.get_interupt_flag(),
+            self.interupt_reg.get_interupt_enable()
+        );
         if self.current_interupt.is_none() {
             if self.ime {
                 self.current_interupt = self.interupt_reg.query_interupts_flag_enable();
             }
         }
         if self.current_interupt.is_some() {
-            // println!(
-            //     "let's goo interupt : {:?}",
-            //     self.current_interupt.as_ref().unwrap()
-            // );
+            println!(
+                "LET'S GOO INTERUPT : {:?}",
+                self.current_interupt.as_ref().unwrap()
+            );
             // push current pc on stack
             let reg = &mut self.reg;
 
@@ -942,7 +950,7 @@ impl CPU {
                 InteruptType::Joypad => 0x0060,
             };
             // TODO: I don't understand but apparenty I need this?
-            self.next_pc += 1;
+            // self.next_pc += 1;
 
             // println!("next_pc in check interupt : {:#04x}", self.next_pc);
             self.ime = false;

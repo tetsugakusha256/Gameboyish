@@ -58,3 +58,21 @@ impl NibblesU8 for u8 {
         (self & 0b1111_0000) >> 4
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::util::u8_traits::Bit;
+
+
+    #[test]
+    fn get_set_bit_test(){
+        let mut byte = 0b0000_0000u8;
+        byte.set_bit(0,true);
+        assert_eq!(byte, 0b0000_0001);
+        byte.set_bit(1,true);
+        assert_eq!(byte, 0b0000_0011);
+        assert_eq!(true, byte.get_bit(1));
+        assert_eq!(true, byte.get_bit(0));
+        assert_eq!(false, byte.get_bit(2));
+    }
+}

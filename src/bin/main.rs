@@ -4,12 +4,11 @@ use game_boyish::{
     emulator::{Emulator, EmulatorState},
     io_handler::IOHandler,
     ppu::PPU,
-    timer::Timer,
     util::{
         cartridge_util::{check_checksum, load, print_header},
         extract_opcode::load_json,
     },
-    windows::game_window::GameWindow,
+    windows::game_window::GameWindow, quartz::Timer,
 };
 use std::{cell::RefCell, rc::Rc};
 

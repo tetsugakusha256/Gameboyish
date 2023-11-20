@@ -79,14 +79,15 @@ impl PPU {
         if self.dots_counter_frame >= 70224 {
             self.dots_counter_frame = 0
         }
-        // println!(
-        //     "Current ppu mode: {:?}, dots frame: {}, dots mods: {}, dots line: {}, last mode 3 dots: {}",
-        //     self.current_mode,
-        //     self.dots_counter_frame,
-        //     self.dots_counter_mode,
-        //     self.dots_counter_line,
-        //     self.mode_3_last_dots_counter
-        // );
+        println!(
+            "Current ppu mode: {:?}, dots frame: {}, dots mods: {}, dots line: {}, last mode 3 dots: {}, FF41: {:?}",
+            self.current_mode,
+            self.dots_counter_frame,
+            self.dots_counter_mode,
+            self.dots_counter_line,
+            self.mode_3_last_dots_counter,
+            self.lcd_status.get_ppu_mode(),
+        );
         // println!("LINE ly : {}", self.ly);
     }
 
@@ -99,7 +100,6 @@ impl PPU {
         // Check for stat interrupt
         self.lcd_status
             .set_lyc_ly(self.ly == self.lcd_status.get_lyc());
-        self.lcd_status.set_ppu_mode(&self.current_mode);
         // TODO: stat interupt
     }
 
@@ -121,17 +121,44 @@ impl PPU {
     }
 
     fn mode2(&mut self) {
+        println!("dots counter mode {}", self.dots_counter_mode);
         if self.dots_counter_mode == 1 {
             self.vram.lock_oam();
             self.vram.unlock_vram();
+            self.lcd_status.set_ppu_mode(&self.current_mode);
+
+            let ly_screen = self.ly + 16;
+            // background
+            let (scx, scy) = self.vram.get_background();
+            let y = scy % 144;
+            let x = scx % 160;
+                println!("scy {}, scx {}", scy, scx);
+            let backgound_tile_location_1 = self.lcd_control.bg_tile_map();
+            // background tiles are in the first part of vram
+            if !backgound_tile_location_1 {
+                // Get the background range
+                // Get the tile id at current pixel
+                // Get the line from tile
+                for i in 0..=8 {
+                    let (l, h) = self
+                        .vram
+                        .get_background_tile_line(ly_screen % 8, i + ly_screen / 8);
+                    let obj_line_vec = tile_fuse_byte_u8(l, h);
+                    self.insert_obj_vec_into_line_pixels(&obj_line_vec, 8 * i as usize);
+                }
+                println!("Printing backgroung : {:?}", self.line_pixels);
+            }
+
             let obj_tile_map = self.vram.get_oam_sprites_vec();
             let obj_height = if self.lcd_control.obj_size() { 8 } else { 16 };
-            let ly_screen = self.ly + 16;
             let line_object = obj_tile_map.iter().filter(|obj| {
                 obj.y < (144 + 16)
                     && obj.y + obj_height > 16
                     && (ly_screen >= obj.y && ly_screen < obj.y + obj_height)
             });
+            println!("objs {:?}", obj_tile_map);
+
+            // obj
             for obj in line_object {
                 println!(
                     "obj.y: {}, ly_screen: {}, height: {}",
@@ -142,7 +169,9 @@ impl PPU {
                     "offset: {}, obj.y: {}, ly_screen: {}, height: {}",
                     y_obj_offset, obj.y, ly_screen, obj_height
                 );
-                let (l, h) = self.vram.get_tile_line(y_obj_offset, obj.tile_number, obj_height == 16);
+                let (l, h) =
+                    self.vram
+                        .get_tile_line(y_obj_offset, obj.tile_number, obj_height == 16);
                 let obj_line_vec = tile_fuse_byte_u8(l, h);
                 self.insert_obj_vec_into_line_pixels(&obj_line_vec, obj.x as usize);
             }
@@ -156,6 +185,7 @@ impl PPU {
         if self.dots_counter_mode == 1 {
             self.vram.lock_vram();
             self.vram.lock_oam();
+            self.lcd_status.set_ppu_mode(&self.current_mode);
             println!("line_pixels {:?}", self.line_pixels);
         }
         // is window on this line?
@@ -188,6 +218,7 @@ impl PPU {
         if self.dots_counter_mode == 1 {
             self.vram.unlock_oam();
             self.vram.unlock_vram();
+            self.lcd_status.set_ppu_mode(&self.current_mode);
         }
 
         // TODO: check the variable condition
@@ -208,6 +239,11 @@ impl PPU {
         }
     }
     fn mode1(&mut self) {
+        if self.dots_counter_mode == 1 {
+            self.vram.unlock_oam();
+            self.vram.unlock_vram();
+            self.lcd_status.set_ppu_mode(&self.current_mode);
+        }
         if self.dots_counter_mode % 456 == 1 {
             self.update_ly();
             self.dots_counter_line = 0;

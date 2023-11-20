@@ -43,7 +43,8 @@ impl Timer {
 }
 #[cfg(test)]
 mod tests {
-    use crate::timer::Timer;
+    use crate::quartz::Timer;
+
 
     #[test]
     fn delta_step_test() {

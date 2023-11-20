@@ -15,12 +15,10 @@ impl VRAM {
     pub fn new(bus: Rc<RefCell<Bus>>) -> VRAM {
         VRAM { bus }
     }
-    pub fn get_background(&self) -> BackgroundReg {
+    // Return (scx, scy)
+    pub fn get_background(&self) -> (u8, u8) {
         let bus = self.bus.borrow();
-        BackgroundReg {
-            scy: bus.read_byte(0xFF42),
-            scx: bus.read_byte(0xFF43),
-        }
+        (bus.read_byte(0xFF43), bus.read_byte(0xFF42))
     }
     pub fn get_window(&self) -> WindowReg {
         let bus = self.bus.borrow();
@@ -28,6 +26,15 @@ impl VRAM {
             wy: bus.read_byte(0xFF4A),
             wx: bus.read_byte(0xFF4B),
         }
+    }
+    pub fn get_background_tile_line(&self, y_offset: u8, tile_number: u8) -> (u8, u8) {
+        let address = match self.get_lcd_control().bg_tile_map(){
+            true => 0x9C00,
+            false => 0x9800,
+        };
+        self.bus
+            .borrow()
+            .get_tile_x_line_2bytes(address + tile_number as u16, y_offset)
     }
     pub fn get_tile_line(&self, y_offset: u8, tile_number: u8, size_16bit: bool) -> (u8, u8) {
         let (mut y_offset, mut tile_number) = (y_offset, tile_number);
@@ -67,7 +74,7 @@ impl VRAM {
         let mut oam_vec = vec![];
         let oam_mem_start = 0xFE00;
         let bus = self.bus.borrow();
-        for i in 0x00..=0x40 {
+        for i in 0x00..0x40 {
             oam_vec.push(OAMSprite {
                 y: bus.read_byte(oam_mem_start + i * 4),
                 x: bus.read_byte(oam_mem_start + i * 4 + 1),
@@ -110,12 +117,12 @@ impl VRAM {
     }
 }
 pub struct BackgroundReg {
-    scy: u8,
-    scx: u8,
+    pub scy: u8,
+    pub scx: u8,
 }
 pub struct WindowReg {
-    wy: u8,
-    wx: u8,
+    pub wy: u8,
+    pub wx: u8,
 }
 #[derive(Debug)]
 pub enum InteruptType {
@@ -185,34 +192,23 @@ impl InteruptReg {
 
     pub fn set_joypad_flag(&mut self, value: bool) {
         let mut bus = self.bus.borrow_mut();
-        let mut mem = bus.read_byte_as_cpu(0xFFFF);
-        mem.set_bit(4, value);
-        bus.write_byte_as_cpu(0xFFFF, mem);
+        bus.write_bit(0xFF0F, 4, value)
     }
     pub fn set_serial_flag(&mut self, value: bool) {
         let mut bus = self.bus.borrow_mut();
-        let mut mem = bus.read_byte_as_cpu(0xFFFF);
-        mem.set_bit(3, value);
-        bus.write_byte_as_cpu(0xFFFF, mem);
+        bus.write_bit(0xFF0F, 3, value)
     }
     pub fn set_timer_flag(&mut self, value: bool) {
         let mut bus = self.bus.borrow_mut();
-        let mut mem = bus.read_byte_as_cpu(0xFFFF);
-        mem.set_bit(2, value);
-        bus.write_byte_as_cpu(0xFFFF, mem);
+        bus.write_bit(0xFF0F, 2, value)
     }
     pub fn set_lcd_flag(&mut self, value: bool) {
         let mut bus = self.bus.borrow_mut();
-        let mut mem = bus.read_byte_as_cpu(0xFFFF);
-        mem.set_bit(1, value);
-        bus.write_byte_as_cpu(0xFFFF, mem);
+        bus.write_bit(0xFF0F, 1, value)
     }
     pub fn set_vblank_flag(&mut self, value: bool) {
         let mut bus = self.bus.borrow_mut();
-        let mut mem = bus.read_byte_as_cpu(0xFFFF);
-        mem.set_bit(0, value);
-        println!("mem: {}", mem);
-        bus.write_byte_as_cpu(0xFFFF, mem);
+        bus.write_bit(0xFF0F, 0, value)
     }
     pub fn get_joypad_flag(&self) -> bool {
         self.get_interupt_flag().get_bit(4)
@@ -230,10 +226,10 @@ impl InteruptReg {
         self.get_interupt_flag().get_bit(0)
     }
     pub fn get_interupt_enable(&self) -> u8 {
-        self.bus.borrow().read_byte_as_cpu(0xFF0F)
+        self.bus.borrow().read_byte_as_cpu(0xFFFF)
     }
     pub fn get_interupt_flag(&self) -> u8 {
-        self.bus.borrow().read_byte_as_cpu(0xFFFF)
+        self.bus.borrow().read_byte_as_cpu(0xFF0F)
     }
     pub fn is_joypad_enable(&self) -> bool {
         self.get_interupt_enable().get_bit(4)
@@ -269,8 +265,21 @@ impl LCDStatusReg {
             PPUModes::Mode2 => (true, false),
             PPUModes::Mode3 => (true, true),
         };
+        println!("Set mode: {:?}", mode);
+        println!("1: {}, 0: {}", bit_1, bit_0);
         bus.write_bit(0xFF41, 0, bit_0);
         bus.write_bit(0xFF41, 1, bit_1);
+    }
+    pub fn get_ppu_mode(&self) -> PPUModes {
+        let byte = self.bus.borrow().read_byte(0xFF41);
+        println!("Get byte: {}", byte);
+        let (bit_1, bit_0) = (byte.get_bit(1), byte.get_bit(0));
+        match (bit_1, bit_0) {
+            (true, true) => PPUModes::Mode3,
+            (true, false) => PPUModes::Mode2,
+            (false, true) => PPUModes::Mode1,
+            (false, false) => PPUModes::Mode0,
+        }
     }
     pub fn set_lyc_ly(&mut self, value: bool) {
         self.bus.borrow_mut().write_bit(0xFF41, 2, value);
@@ -343,6 +352,7 @@ impl LCDControlReg {
         self.bus.borrow().read_byte(0xFF40).get_bit(0)
     }
 }
+#[derive(Debug)]
 pub struct OAMSprite {
     pub y: u8,
     pub x: u8,
@@ -432,9 +442,9 @@ impl Bus {
     }
     pub fn read_byte_as_cpu(&self, address: u16) -> u8 {
         // temporary gamedoctor thing
-        // if address == 0xFF44 {
-        //     return 0x90;
-        // }
+        if address == 0xFF44 {
+            return 0x90;
+        }
         if self.vram_lock && (0x8000..=0x9FFF).contains(&address) {
             return 0x90;
         }
@@ -448,9 +458,9 @@ impl Bus {
         let low = address.high_8nibble();
         let small_endian_address = ((low as u16) << 8) + (high as u16);
         // Doctor
-        // if small_endian_address == 0xFF44 {
-        //     return 0x90;
-        // }
+        if small_endian_address == 0xFF44 {
+            return 0x90;
+        }
         self.read_byte_as_cpu(small_endian_address)
     }
     pub fn read_2_bytes_little_endian(&self, address: u16) -> u16 {
@@ -534,14 +544,18 @@ impl Bus {
         let data_slice = &mut self.data[add..add_end];
         data_slice.copy_from_slice(slice);
     }
+    // WARN: false for test
+    // TODO: false for test
     pub fn lock_vram(&mut self) {
-        self.vram_lock = true;
+        self.vram_lock = false;
     }
     pub fn unlock_vram(&mut self) {
         self.vram_lock = false;
     }
+    // WARN: false for test
+    // TODO: false for test
     pub fn lock_oam(&mut self) {
-        self.oam_lock = true;
+        self.oam_lock = false;
     }
     pub fn unlock_oam(&mut self) {
         self.oam_lock = false;
@@ -663,15 +677,15 @@ mod tests {
         let mut interupt_reg = InteruptReg::new(Rc::clone(&bus_rc));
         {
             let mut bus = bus_rc.borrow_mut();
-            println!("0xFFFF: {}", bus.read_byte_as_cpu(0xFFFF));
+            println!("0xFF0F: {}", bus.read_byte_as_cpu(0xFF0F));
             bus.write_byte_as_cpu(0xFFFF, 0b0000_0001);
-            println!("0xFFFF: {}", bus.read_byte_as_cpu(0xFFFF));
+            println!("0xFF0F: {}", bus.read_byte_as_cpu(0xFF0F));
         }
         interupt_reg.reset_flag(&InteruptType::VBlank);
         {
             let mut bus = bus_rc.borrow_mut();
-            println!("0xFFFF: {}", bus.read_byte_as_cpu(0xFFFF));
-            assert_eq!(bus.read_byte_as_cpu(0xFFFF), 0b0000_0000);
+            println!("0xFF0F: {}", bus.read_byte_as_cpu(0xFF0F));
+            assert_eq!(bus.read_byte_as_cpu(0xFF0F), 0b0000_0000);
         }
     }
 }
