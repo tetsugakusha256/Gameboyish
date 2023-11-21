@@ -2,3 +2,4 @@
 /roms/
 /log/
 /boot_roms/
+callgrind*
