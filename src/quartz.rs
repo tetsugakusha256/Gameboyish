@@ -11,9 +11,9 @@ pub struct Quartz {
 impl Quartz {
     pub fn new() -> Quartz {
         // True value
-        let frequency = 4194304u32;
-        // Slower value
-        // let frequency = 60000u32;
+        // let frequency = 4194304u32;
+        // Faster value
+        let frequency = 600000000u32;
         Quartz {
             frequency,
             delta_step: Quartz::step_length_nanosec(frequency),
@@ -44,7 +44,6 @@ impl Quartz {
 #[cfg(test)]
 mod tests {
     use crate::quartz::Quartz;
-
 
     #[test]
     fn delta_step_test() {

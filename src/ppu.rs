@@ -135,7 +135,6 @@ impl PPU {
             let x = scx % 160;
             // println!("Drawing line {} of background", self.ly);
 
-
             // TODO: need to add + 12 somewhere because the map is 32*32 but now I assume it's 20*20
             for i in 0..20 {
                 let (l, h) = self

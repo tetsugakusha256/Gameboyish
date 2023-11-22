@@ -34,7 +34,7 @@ impl Emulator {
         self.debug_screen.init("Debug",false);
         self.bus
             .borrow_mut()
-            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/01-special.gb")
+            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/09-op r,r.gb")
             .unwrap();
         // Load boot rom
         // self.bus.borrow_mut().init();

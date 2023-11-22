@@ -1,5 +1,6 @@
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
+use std::time::{Duration, Instant};
 use std::{cell::RefCell, rc::Rc};
 
 use crate::bus::{InteruptReg, InteruptType};
@@ -24,6 +25,7 @@ pub struct CPU {
     cycles_since_last_cmd: u64,
     cycles_to_wait: u8,
     total_tick: u64,
+    start_time: Instant,
 
     ime: bool,
     interupt_reg: InteruptReg,
@@ -56,6 +58,7 @@ impl CPU {
             current_interupt: None,
             interupt_stage: 0,
             interupt_happened: false,
+            start_time: Instant::now(),
         }
     }
     pub fn new_doctor(bus: Rc<RefCell<Bus>>) -> CPU {
@@ -75,6 +78,7 @@ impl CPU {
             current_interupt: None,
             interupt_stage: 0,
             interupt_happened: false,
+            start_time: Instant::now(),
         }
     }
     pub fn init_with_log(&mut self) {
@@ -103,7 +107,13 @@ impl CPU {
             if self.log_buffer.is_some() {
                 self.log_state_to_file();
             }
-            if self.total_tick / 49359100 == 0 {
+            if self.total_tick % 10000 == 0 {
+                println!(
+                    "Instruction per milisecond: {}",
+                    self.total_tick as u128 / self.start_time.elapsed().as_millis()
+                )
+            }
+            if self.total_tick % 1000 == 0 {
                 // println!(
                 //     "Running code: {:#04x}, cycle: {:02}, pc: {:#04x}, total ticks: {}",
                 //     self.opcode, self.cycles_since_last_cmd, self.reg.pc, self.total_tick
@@ -129,7 +139,7 @@ impl CPU {
                     self.ime,
                     self.total_tick
                 );
-                println!("{}",text);
+                // println!("{}", text);
             }
             // set cycle timing
             self.cycles_since_last_cmd = 0;
@@ -260,8 +270,8 @@ impl CPU {
     fn opcode_prefixed_tick(&mut self, instruction: Instruction) {
         let mnemonic: PrefixOpcodeMnemonics = instruction.mnemonic.clone().into();
         match mnemonic {
-            PrefixOpcodeMnemonics::RLC => self.op_pre_1arg_carryless(instruction, rotate_right),
-            PrefixOpcodeMnemonics::RRC => self.op_pre_1arg_carryless(instruction, rotate_left),
+            PrefixOpcodeMnemonics::RRC => self.op_pre_1arg_carryless(instruction, rotate_right),
+            PrefixOpcodeMnemonics::RLC => self.op_pre_1arg_carryless(instruction, rotate_left),
             PrefixOpcodeMnemonics::RL => {
                 self.op_pre_1arg_with_carry(instruction, rotate_left_carry)
             }
@@ -394,7 +404,7 @@ impl CPU {
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Error push"),
         };
-        reg.sp = reg.sp - 2;
+        reg.sp = reg.sp.wrapping_sub(2);
         bus.write_2_bytes_little_endian(reg.sp, target_reg);
     }
     //pop
@@ -411,7 +421,7 @@ impl CPU {
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Error pop"),
         };
-        reg.sp = reg.sp + 2;
+        reg.sp = reg.sp.wrapping_add(2);
     }
     //rst
     fn op_rst(&mut self, instruction: Instruction) {
@@ -435,7 +445,7 @@ impl CPU {
         //and the memory is 8bit
         //call to nn, SP=SP-2, (SP)=PC, PC=nn
         //TODO: CHECK HOW TO WRITE THE 2BYTES which endian to use?
-        reg.sp = reg.sp - 2;
+        reg.sp = reg.sp.wrapping_sub(2);
         bus.write_2_bytes_little_endian(address, reg.pc);
         self.next_pc = address;
     }
@@ -467,7 +477,7 @@ impl CPU {
             // moving stack pointer
             // OK !
             let instruction_byte_size = instruction.bytes;
-            reg.sp = reg.sp - 2;
+            reg.sp = reg.sp.wrapping_sub(2);
             bus.write_2_bytes_little_endian(reg.sp, reg.pc + instruction_byte_size as u16);
             self.next_pc = bus.get_a16_address(reg.pc);
         }
@@ -552,7 +562,7 @@ impl CPU {
         if condition {
             self.next_pc = bus.read_2_bytes_little_endian(reg.sp);
             // OK
-            reg.sp += 2;
+            reg.sp = reg.sp.wrapping_add(2);
         }
         if conditional && !condition {
             self.cycles_to_wait = instruction.cycles[1] as u8;
@@ -993,7 +1003,7 @@ impl CPU {
             // push current pc on stack
             let reg = &mut self.reg;
 
-            reg.sp = reg.sp - 2;
+            reg.sp = reg.sp.wrapping_sub(2);
             self.bus
                 .borrow_mut()
                 .write_2_bytes_little_endian(reg.sp, reg.pc);
