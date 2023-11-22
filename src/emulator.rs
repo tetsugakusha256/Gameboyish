@@ -5,8 +5,10 @@ use crate::{
     cpu::CPU,
     io_handler::IOHandler,
     ppu::PPU,
+    quartz::Quartz,
+    timer_reg::TimerReg,
     util::tiles_util::{vram_to_screen, ScreenVector},
-    windows::game_window::GameWindow, quartz::Quartz,
+    windows::game_window::GameWindow,
 };
 #[derive(PartialEq, Eq)]
 pub enum EmulatorState {
@@ -19,7 +21,8 @@ pub struct Emulator {
     pub ppu: PPU,
     pub io_handler: IOHandler,
     pub bus: Rc<RefCell<Bus>>,
-    pub timer: Quartz,
+    pub quartz: Quartz,
+    pub timer: TimerReg,
     pub state: EmulatorState,
     pub cycles: u64,
     pub screen: GameWindow,
@@ -27,14 +30,15 @@ pub struct Emulator {
 }
 impl Emulator {
     pub fn init(&mut self) {
-        self.screen.init("Main");
-        self.debug_screen.init("Debug");
+        self.screen.init("Main", true);
+        self.debug_screen.init("Debug",false);
         self.bus
             .borrow_mut()
-            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/02-interrupts.gb")
+            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/test_roms/mts-20221022-1430-8d742b9/acceptance/bits/reg_f.gb")
             .unwrap();
         // Load boot rom
-        // self.bus.borrow_mut().init();
+        self.bus.borrow_mut().init();
+
         // Activate logging
         // self.cpu.init_with_log();
 
@@ -61,7 +65,7 @@ impl Emulator {
     fn main_loop(&mut self) {
         if self.state == EmulatorState::Running {
             loop {
-                self.timer.wait_till_next_tick();
+                self.quartz.wait_till_next_tick();
                 if self.state == EmulatorState::Running {
                     self.update_emulator_state();
                 }
@@ -73,26 +77,30 @@ impl Emulator {
     }
     // This function make calls every clock tick
     fn update_emulator_state(&mut self) {
-        self.timer.next_tick();
+        self.quartz.next_tick();
         self.cycles += 1;
         // TODO: Think where to put this because reading button is made in 2 step
         // put a bit to set if we want to check direction or buttons
         // then read the value (How many cycles in between those?)
         // self.io_handler.next_tick();
+        self.timer.next_tick();
         self.cpu.next_tick();
-        // self.ppu.next_tick();
+        // println!("cycle : {}", self.cycles);
+        self.ppu.next_tick();
         // self.bus.borrow_mut().write_slice(0x8000, &[0x56u8;8192]);
 
-        if self.cycles % 1000 == 0 {
+        if self.cycles % 70224 == 0 {
             self.debug_screen.next_tick(&vram_to_screen(
                 Vec::from(self.bus.borrow().read_bytes_range(0x8000, 8192)),
                 16,
             ));
+            // println!("Screen_array: {:?}", &self.ppu.screen_array);
             self.screen.next_tick(&self.ppu.screen_array);
+            // println!("Bg map : {:?}", self.bus.borrow().read_bytes_range(0x9800, 1024));
         }
 
-        if self.cycles > 152008 {
-            self.stop();
+        if self.cycles > 50000*50{
+            self.pause_resume();
         }
     }
 }
@@ -104,8 +112,10 @@ mod tests {
         bus::{Bus, VRAM},
         io_handler::IOHandler,
         ppu::PPU,
+        quartz::Quartz,
         register::Registers,
-        windows::game_window::GameWindow, quartz::Quartz,
+        timer_reg::TimerReg,
+        windows::game_window::GameWindow,
     };
     use std::{cell::RefCell, rc::Rc};
 
@@ -116,8 +126,9 @@ mod tests {
             cpu: CPU::new(Rc::clone(&bus)),
             ppu: PPU::new(Rc::clone(&bus)),
             io_handler: IOHandler::new(Rc::clone(&bus)),
+            timer: TimerReg::new(Rc::clone(&bus)),
             bus: Rc::clone(&bus),
-            timer: Quartz::new(),
+            quartz: Quartz::new(),
             state: EmulatorState::Running,
             cycles: 0,
             screen: GameWindow::new(400, 400),

@@ -7,6 +7,7 @@ use crate::{
 };
 
 #[derive(Debug)]
+#[derive(PartialEq, Eq)]
 pub enum PPUModes {
     Mode0,
     Mode1,
@@ -69,25 +70,25 @@ impl PPU {
         }
     }
     pub fn next_tick(&mut self) {
-        // 4 dots per cpu cycle
-        for _ in 0..4 {
-            self.dots_counter_frame += 1;
-            self.dots_counter_line += 1;
-            self.dots_counter_mode += 1;
-            self.tick_mode();
-        }
+        // 4 dots per cpu cycle so one per clock cycle
+        self.dots_counter_frame += 1;
+        self.dots_counter_line += 1;
+        self.dots_counter_mode += 1;
+        self.tick_mode();
+
         if self.dots_counter_frame >= 70224 {
             self.dots_counter_frame = 0
         }
-        println!(
-            "Current ppu mode: {:?}, dots frame: {}, dots mods: {}, dots line: {}, last mode 3 dots: {}, FF41: {:?}",
-            self.current_mode,
-            self.dots_counter_frame,
-            self.dots_counter_mode,
-            self.dots_counter_line,
-            self.mode_3_last_dots_counter,
-            self.lcd_status.get_ppu_mode(),
-        );
+        // println!(
+        //     "Current ppu mode: {:?}, dots frame: {:05}, dots mods: {:03}, dots line: {}, ly: {}, last mode 3 dots: {}, FF41: {:?}",
+        //     self.current_mode,
+        //     self.dots_counter_frame,
+        //     self.dots_counter_mode,
+        //     self.dots_counter_line,
+        //     self.ly,
+        //     self.mode_3_last_dots_counter,
+        //     self.lcd_status.get_ppu_mode(),
+        // );
         // println!("LINE ly : {}", self.ly);
     }
 
@@ -112,7 +113,7 @@ impl PPU {
         }
     }
 
-    fn insert_obj_vec_into_line_pixels(&mut self, vec: &Vec<u8>, pos_x: usize) {
+    fn insert_gray_vec_into_line_pixels(&mut self, vec: &Vec<u8>, pos_x: usize) {
         for i in 0..=7 {
             if pos_x + i < 160 {
                 self.line_pixels[pos_x + i] = vec[i]
@@ -121,7 +122,7 @@ impl PPU {
     }
 
     fn mode2(&mut self) {
-        println!("dots counter mode {}", self.dots_counter_mode);
+        // println!("dots counter mode {}", self.dots_counter_mode);
         if self.dots_counter_mode == 1 {
             self.vram.lock_oam();
             self.vram.unlock_vram();
@@ -132,22 +133,18 @@ impl PPU {
             let (scx, scy) = self.vram.get_background();
             let y = scy % 144;
             let x = scx % 160;
-                println!("scy {}, scx {}", scy, scx);
-            let backgound_tile_location_1 = self.lcd_control.bg_tile_map();
-            // background tiles are in the first part of vram
-            if !backgound_tile_location_1 {
-                // Get the background range
-                // Get the tile id at current pixel
-                // Get the line from tile
-                for i in 0..=8 {
-                    let (l, h) = self
-                        .vram
-                        .get_background_tile_line(ly_screen % 8, i + ly_screen / 8);
-                    let obj_line_vec = tile_fuse_byte_u8(l, h);
-                    self.insert_obj_vec_into_line_pixels(&obj_line_vec, 8 * i as usize);
-                }
-                println!("Printing backgroung : {:?}", self.line_pixels);
+            // println!("Drawing line {} of background", self.ly);
+            // Get the background range
+            // Get the tile id at current pixel
+            // Get the line from tile
+            for i in 0..20 {
+                let (l, h) = self
+                    .vram
+                    .get_background_tile_line(ly_screen % 8, i + (self.ly as u16 / 8) * 20);
+                let line_gray_value = tile_fuse_byte_u8(l, h);
+                self.insert_gray_vec_into_line_pixels(&line_gray_value, 8 * i as usize);
             }
+            // println!("Printing backgroung : {:?}", self.line_pixels);
 
             let obj_tile_map = self.vram.get_oam_sprites_vec();
             let obj_height = if self.lcd_control.obj_size() { 8 } else { 16 };
@@ -156,7 +153,7 @@ impl PPU {
                     && obj.y + obj_height > 16
                     && (ly_screen >= obj.y && ly_screen < obj.y + obj_height)
             });
-            println!("objs {:?}", obj_tile_map);
+            // println!("objs {:?}", obj_tile_map);
 
             // obj
             for obj in line_object {
@@ -173,7 +170,7 @@ impl PPU {
                     self.vram
                         .get_tile_line(y_obj_offset, obj.tile_number, obj_height == 16);
                 let obj_line_vec = tile_fuse_byte_u8(l, h);
-                self.insert_obj_vec_into_line_pixels(&obj_line_vec, obj.x as usize);
+                self.insert_gray_vec_into_line_pixels(&obj_line_vec, obj.x as usize);
             }
         }
         if self.dots_counter_line == 80 {
@@ -186,18 +183,23 @@ impl PPU {
             self.vram.lock_vram();
             self.vram.lock_oam();
             self.lcd_status.set_ppu_mode(&self.current_mode);
-            println!("line_pixels {:?}", self.line_pixels);
+            // println!("line_pixels {:?}", self.line_pixels);
         }
         // is window on this line?
         // get object on this line
         // draw background
         // draw object
         // draw window
-        if self.dots_counter_mode < 160 {
+        if self.dots_counter_mode <= 160 {
+            // self.screen_array.set_x_y_gray(
+            //     self.dots_counter_mode - 1,
+            //     self.ly as usize,
+            //     2,
+            // );
             self.screen_array.set_x_y_gray(
-                self.dots_counter_mode,
+                self.dots_counter_mode - 1,
                 self.ly as usize,
-                self.line_pixels[self.dots_counter_mode],
+                self.line_pixels[self.dots_counter_mode - 1],
             );
         }
         // let bg_tile_map = self.vram.bg_tile_map_vec();
@@ -244,9 +246,10 @@ impl PPU {
             self.vram.unlock_vram();
             self.lcd_status.set_ppu_mode(&self.current_mode);
         }
-        if self.dots_counter_mode % 456 == 1 {
+        if self.dots_counter_mode % 456 == 0 {
             self.update_ly();
             self.dots_counter_line = 0;
+            // println!("mode1 line: {}", self.dots_counter_mode);
         }
         if self.dots_counter_mode == MODE_1_DOTS {
             self.current_mode = PPUModes::Mode2;
@@ -271,12 +274,12 @@ mod tests {
         let bus = Rc::new(RefCell::new(Bus::new()));
         let mut ppu = PPU::new(Rc::clone(&bus));
         let vec = vec![1u8, 3, 2, 3, 1, 1, 0, 0];
-        ppu.insert_obj_vec_into_line_pixels(&vec, 0);
+        ppu.insert_gray_vec_into_line_pixels(&vec, 0);
         assert_eq!(ppu.line_pixels[0], 1);
         assert_eq!(ppu.line_pixels[1], 3);
         assert_eq!(ppu.line_pixels[2], 2);
         assert_eq!(ppu.line_pixels[3], 3);
-        ppu.insert_obj_vec_into_line_pixels(&vec, 158);
+        ppu.insert_gray_vec_into_line_pixels(&vec, 158);
         assert_eq!(ppu.line_pixels[158], 1);
         assert_eq!(ppu.line_pixels[159], 3);
     }

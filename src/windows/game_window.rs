@@ -24,13 +24,13 @@ impl GameWindow {
             last_refresh: Instant::now(),
         }
     }
-    pub fn init(&mut self, name: &str) {
+    pub fn init(&mut self, name: &str, resize: bool) {
         let window = Window::new(
             name,
             self.width,
             self.height,
             WindowOptions {
-                resize: true,
+                resize,
                 ..WindowOptions::default()
             },
         )

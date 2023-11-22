@@ -27,14 +27,41 @@ impl VRAM {
             wx: bus.read_byte(0xFF4B),
         }
     }
-    pub fn get_background_tile_line(&self, y_offset: u8, tile_number: u8) -> (u8, u8) {
-        let address = match self.get_lcd_control().bg_tile_map(){
+    // tile_number = the tile_number in the bg tile map(the map that stores id)
+    // So it goes above 256 because the screen can show 20*18=360 tile on the screen
+    pub fn get_background_tile_line(&self, y_offset: u8, tile_number: u16) -> (u8, u8) {
+        // println!(
+        //     "tile line : y_offset {}, tile_numbex: {}",
+        //     y_offset, tile_number
+        // );
+        let address = match self.get_lcd_control().bg_tile_map() {
             true => 0x9C00,
             false => 0x9800,
         };
-        self.bus
-            .borrow()
-            .get_tile_x_line_2bytes(address + tile_number as u16, y_offset)
+        self.get_tile_x_line_2bytes(address + tile_number as u16, y_offset)
+    }
+    // get the two bytes responsible for the x line tile color
+    fn get_tile_x_line_2bytes(&self, tile_id_address: u16, line: u8) -> (u8, u8) {
+        if line > 7 {
+            panic!("Error");
+        }
+        let bus = self.bus.borrow();
+        let mut tile_id = bus.read_byte_as_cpu(tile_id_address) as u16;
+        println!("tile id: {}, line: {}", tile_id, line);
+        // Convert tile number to tile address
+        let tile_address = match self.get_lcd_control().bg_win_tiles() {
+            true => 0x8000u16 + tile_id * 16,
+            false => match tile_id {
+                0..=127 => 0x9000u16 + tile_id * 16,
+                128..=255 => 0x8800u16 + tile_id * 16 - 128,
+                _ => panic!("Impossible"),
+            },
+        };
+        println!("tile address: {:#06x}", tile_address);
+        (
+            bus.read_byte_as_cpu(tile_address + 2 * line as u16),
+            bus.read_byte_as_cpu(tile_address + 2 * line as u16 + 1),
+        )
     }
     pub fn get_tile_line(&self, y_offset: u8, tile_number: u8, size_16bit: bool) -> (u8, u8) {
         let (mut y_offset, mut tile_number) = (y_offset, tile_number);
@@ -42,9 +69,7 @@ impl VRAM {
             y_offset = y_offset - 8;
             tile_number += 1;
         }
-        self.bus
-            .borrow()
-            .get_tile_x_line_2bytes(0x8000 + tile_number as u16, y_offset)
+        self.get_tile_x_line_2bytes(0x8000 + tile_number as u16, y_offset)
     }
     pub fn lock_oam(&mut self) {
         self.bus.borrow_mut().lock_oam();
@@ -257,22 +282,43 @@ impl LCDStatusReg {
     pub fn get_lyc(&self) -> u8 {
         self.bus.borrow().read_byte(0xFF44)
     }
+    fn check_stat_interupt(&self) {
+        let mode = self.get_ppu_mode();
+        let stat_interupt = match self.get_stat_mode() {
+            StatInteruptType::Mode0 => mode == PPUModes::Mode0,
+            StatInteruptType::Mode1 => mode == PPUModes::Mode1,
+            StatInteruptType::Mode2 => mode == PPUModes::Mode2,
+            StatInteruptType::LYCEqualLY => self.get_lyc_ly(),
+            StatInteruptType::None => false,
+        };
+        if stat_interupt {
+            self.bus.borrow_mut().write_bit(0xFF0F, 1, true);
+        }
+    }
     pub fn set_ppu_mode(&mut self, mode: &PPUModes) {
-        let mut bus = self.bus.borrow_mut();
         let (bit_1, bit_0) = match mode {
             PPUModes::Mode0 => (false, false),
             PPUModes::Mode1 => (false, true),
             PPUModes::Mode2 => (true, false),
             PPUModes::Mode3 => (true, true),
         };
-        println!("Set mode: {:?}", mode);
-        println!("1: {}, 0: {}", bit_1, bit_0);
-        bus.write_bit(0xFF41, 0, bit_0);
-        bus.write_bit(0xFF41, 1, bit_1);
+        // println!("Set mode: {:?}", mode);
+        // println!("1: {}, 0: {}", bit_1, bit_0);
+        {
+            let mut bus = self.bus.borrow_mut();
+            bus.write_bit(0xFF41, 0, bit_0);
+            bus.write_bit(0xFF41, 1, bit_1);
+        }
+        self.check_stat_interupt();
     }
+    pub fn set_lyc_ly(&mut self, value: bool) {
+        self.bus.borrow_mut().write_bit(0xFF41, 2, value);
+        self.check_stat_interupt();
+    }
+
     pub fn get_ppu_mode(&self) -> PPUModes {
         let byte = self.bus.borrow().read_byte(0xFF41);
-        println!("Get byte: {}", byte);
+        // println!("Get byte: {}", byte);
         let (bit_1, bit_0) = (byte.get_bit(1), byte.get_bit(0));
         match (bit_1, bit_0) {
             (true, true) => PPUModes::Mode3,
@@ -281,12 +327,12 @@ impl LCDStatusReg {
             (false, false) => PPUModes::Mode0,
         }
     }
-    pub fn set_lyc_ly(&mut self, value: bool) {
-        self.bus.borrow_mut().write_bit(0xFF41, 2, value);
+    fn get_lyc_ly(&self) -> bool {
+        self.bus.borrow().read_byte(0xFF41).get_bit(2)
     }
     pub fn get_stat_mode(&self) -> StatInteruptType {
         let mut byte = self.bus.borrow().read_byte(0xFF41).clone();
-        byte = byte >> 2;
+        byte = byte >> 3;
         for i in 0..=3 {
             if byte >> i & 0x0000_0001 == 1 {
                 return match i {
@@ -442,9 +488,13 @@ impl Bus {
     }
     pub fn read_byte_as_cpu(&self, address: u16) -> u8 {
         // temporary gamedoctor thing
+        if address == 0xFF02 || address == 0xFF44 {
+            return 0x90;
+        }
         if address == 0xFF44 {
             return 0x90;
         }
+
         if self.vram_lock && (0x8000..=0x9FFF).contains(&address) {
             return 0x90;
         }
@@ -458,6 +508,9 @@ impl Bus {
         let low = address.high_8nibble();
         let small_endian_address = ((low as u16) << 8) + (high as u16);
         // Doctor
+        if small_endian_address == 0xFF02 || small_endian_address == 0xFF44 {
+            return 0x90;
+        }
         if small_endian_address == 0xFF44 {
             return 0x90;
         }
@@ -514,6 +567,11 @@ impl Bus {
         // if address == 0xFF44 {
         //     return;
         // }
+        // Reset counter if accessing 0xFF04 div timer
+        if address == 0xFF04 {
+            self.write_byte(0xFF04, 0);
+            return;
+        }
         if self.vram_lock && (0x8000..=0x9FFF).contains(&address) {
             return;
         }
@@ -564,18 +622,6 @@ impl Bus {
         let mut mem = self.read_byte(address);
         mem.set_bit(bit, value);
         self.write_byte(address, mem);
-    }
-
-    // 0-7 line
-    fn get_tile_x_line_2bytes(&self, address: u16, line: u8) -> (u8, u8) {
-        if line > 7 {
-            panic!("Error");
-        }
-        let i = (line * 2) as u16;
-        (
-            self.read_byte_as_cpu(address + i),
-            self.read_byte_as_cpu(address + i + 1),
-        )
     }
 }
 

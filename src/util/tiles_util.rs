@@ -1,4 +1,7 @@
-use crate::{windows::game_window::from_u32_gray_to_rgb, bus::{OAMSprite, VRAM}};
+use crate::{
+    bus::{OAMSprite, VRAM},
+    windows::game_window::from_u32_gray_to_rgb,
+};
 
 use super::u8_traits::Bit;
 
@@ -26,10 +29,9 @@ impl ScreenVector {
         }
     }
     // TODO:
-    pub fn insert_object_tile(&mut self, object_tile: &OAMSprite, vram: &VRAM){
-           
-    }
+    pub fn insert_object_tile(&mut self, object_tile: &OAMSprite, vram: &VRAM) {}
     pub fn set_x_y_gray(&mut self, x: usize, y: usize, gray_value: u8) {
+        // println!("Set x y pixel, x: {}, y: {}", x, y);
         if x >= self.width || y >= self.height() {
             panic!("Out of bound screen read attempt");
         }

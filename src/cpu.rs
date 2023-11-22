@@ -22,7 +22,8 @@ pub struct CPU {
     pub reg: Registers,
     pub bus: Rc<RefCell<Bus>>,
     cycles_since_last_cmd: u64,
-    cycles_to_wait: u64,
+    cycles_to_wait: u8,
+    total_tick: u64,
 
     ime: bool,
     interupt_reg: InteruptReg,
@@ -46,6 +47,7 @@ impl CPU {
             cycles_to_wait: 0,
             opcode: 0x00,
             cycles_since_last_cmd: 0,
+            total_tick: 0,
             instruction_dict_notprefixed: load_json("opcodes_nopre.json").unwrap(),
             instruction_dict_prefixed: load_json("opcodes_pre.json").unwrap(),
             ime: false,
@@ -63,6 +65,7 @@ impl CPU {
             bus,
             cycles_to_wait: 0,
             cycles_since_last_cmd: 0,
+            total_tick: 0,
             opcode: 0x00,
             instruction_dict_notprefixed: load_json("opcodes_nopre.json").unwrap(),
             instruction_dict_prefixed: load_json("opcodes_pre.json").unwrap(),
@@ -77,13 +80,16 @@ impl CPU {
     pub fn init_with_log(&mut self) {
         self.init_log_file("log/log_file.txt");
     }
-    pub fn stop(&self) {}
+    pub fn stop(&mut self) {
+        // TODO: what should actually happen is a way to stop the timer from ticking
+        self.bus.borrow_mut().write_byte_as_cpu(0xFF04, 0x00);
+    }
     // Check if I should do stuff and wait the proper amount of cycle
     // or wait and then do stuff
     pub fn next_tick(&mut self) {
-        if self.cycles_since_last_cmd >= self.cycles_to_wait {
-            // self.cycles_since_last_cmd = 0;
-
+        self.cycles_since_last_cmd += 1;
+        if self.cycles_since_last_cmd >= self.cycles_to_wait as u64 {
+            self.total_tick += 1;
             // Run next command
             self.opcode = self.bus.borrow().read_byte_as_cpu(self.reg.pc);
             self.check_for_interupt();
@@ -97,22 +103,47 @@ impl CPU {
             if self.log_buffer.is_some() {
                 self.log_state_to_file();
             }
-            if self.cycles_since_last_cmd % 1 == 0 {
-                println!(
-                    "Running code: {:#02x}, cycle: {}, pc: {}",
-                    self.opcode, self.cycles_since_last_cmd, self.reg.pc
+            if self.total_tick % 1000 == 0 {
+                // println!(
+                //     "Running code: {:#04x}, cycle: {:02}, pc: {:#04x}, total ticks: {}",
+                //     self.opcode, self.cycles_since_last_cmd, self.reg.pc, self.total_tick
+                // );
+                let reg = &self.reg;
+                let bus = self.bus.borrow();
+                let mut text = format!(
+                    "A:{:#04x} F:{:#04x} B:{:#04x} C:{:#04x} D:{:#04x} E:{:#04x} H:{:#04x} L:{:#04x} SP:{:#06x} PC:{:#06x} PCMEM:{:#04x},{:#04x},{:#04x},{:#04x}, ime: {}, ticks: {}",
+                    reg.get_a(),
+                    reg.get_f(),
+                    reg.get_b(),
+                    reg.get_c(),
+                    reg.get_d(),
+                    reg.get_e(),
+                    reg.get_h(),
+                    reg.get_l(),
+                    reg.sp,
+                    reg.pc,
+                    bus.read_byte_as_cpu(reg.pc),
+                    bus.read_byte_as_cpu(reg.pc.wrapping_add(1)),
+                    bus.read_byte_as_cpu(reg.pc.wrapping_add(2)),
+                    bus.read_byte_as_cpu(reg.pc.wrapping_add(3)),
+                    self.ime,
+                    self.total_tick
                 );
+                // println!("{}",text);
             }
+            // set cycle timing
+            self.cycles_since_last_cmd = 0;
+            // Run opcode
             self.tick(self.opcode);
+            // Applying the next_pc mem that might have been altered by a jump operation
+            // println!("pc: {}, next pc: {}", self.reg.pc, self.next_pc);
+            self.reg.pc = self.next_pc;
         }
-        self.cycles_since_last_cmd += 1;
-        // Applying the next_pc mem that might have been altered by a jump operation
-        println!("pc: {}, next pc: {}", self.reg.pc, self.next_pc);
-        self.reg.pc = self.next_pc;
     }
     pub fn tick(&mut self, opcode: u8) {
         // Set next_pc mem according to instruction byte length might be assigned again by a jump
         self.next_pc = self.get_next_pc(opcode);
+        self.cycles_to_wait = self.get_cycles_to_wait(opcode);
         if opcode == 0xCB {
             // Set opcode to next byte
             let opcode = self.bus.borrow().read_byte_as_cpu(self.reg.get_pc_next());
@@ -124,6 +155,17 @@ impl CPU {
             );
         };
     }
+    fn get_cycles_to_wait(&self, opcode: u8) -> u8 {
+        let dict;
+        if opcode == 0xCB {
+            dict = &self.instruction_dict_prefixed;
+        } else {
+            dict = &self.instruction_dict_notprefixed;
+        };
+        let instruction = &dict[opcode as usize];
+        instruction.cycles[0] as u8
+    }
+
     fn get_next_pc(&self, opcode: u8) -> u16 {
         let dict;
         if opcode == 0xCB {
@@ -412,13 +454,15 @@ impl CPU {
                 NopreOperands::C => reg.flag_c(),
                 NopreOperands::NC => !reg.flag_c(),
                 _ => panic!("Invalid jump condition"),
+            };
+            if !condition {
+                self.cycles_to_wait = instruction.cycles[1] as u8;
             }
-        }
-        //SP=SP-2 the stack goes 2 addresses down
-        //it's 2 because the stack is used to store 16bit value/address
-        //and the memory is 8bit
-        //call to nn, SP=SP-2, (SP)=PC, PC=nn
-        //TODO: CHECK HOW TO WRITE THE 2BYTES which endian to use?
+        } //SP=SP-2 the stack goes 2 addresses down
+          //it's 2 because the stack is used to store 16bit value/address
+          //and the memory is 8bit
+          //call to nn, SP=SP-2, (SP)=PC, PC=nn
+          //TODO: CHECK HOW TO WRITE THE 2BYTES which endian to use?
         if condition {
             // moving stack pointer
             // OK !
@@ -442,6 +486,9 @@ impl CPU {
                 NopreOperands::C => reg.flag_c(),
                 NopreOperands::NC => !reg.flag_c(),
                 _ => panic!("Invalid jump condition"),
+            };
+            if !conditional {
+                self.cycles_to_wait = instruction.cycles[1] as u8;
             }
         }
         if condition {
@@ -468,8 +515,12 @@ impl CPU {
                 NopreOperands::C => reg.flag_c(),
                 NopreOperands::NC => !reg.flag_c(),
                 _ => panic!("Invalid jump condition"),
+            };
+            if !condition {
+                self.cycles_to_wait = instruction.cycles[1] as u8;
             }
         }
+
         let target = instruction.operands[i].name.clone().into();
         let new_pc = match target {
             NopreOperands::HL => reg.hl,
@@ -485,6 +536,8 @@ impl CPU {
         let bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         let operand = instruction.operands.get(0);
+        let conditional = instruction.cycles.len() == 2;
+
         let condition = match operand {
             Some(operand_type) => match operand_type.name.clone().into() {
                 NopreOperands::Z => reg.flag_z(),
@@ -500,6 +553,9 @@ impl CPU {
             self.next_pc = bus.read_2_bytes_little_endian(reg.sp);
             // OK
             reg.sp += 2;
+        }
+        if conditional && !condition {
+            self.cycles_to_wait = instruction.cycles[1] as u8;
         }
     }
     fn op_cp_8bit(&mut self, instruction: Instruction) {
@@ -574,7 +630,7 @@ impl CPU {
             _ => panic!("Missing operand for add 8bit?"),
         };
         let (new_a, z, n, h, c) = result;
-        println!("New a: {:#04x}", new_a);
+        // println!("New a: {:#04x}", new_a);
         reg.set_flags(z, n, h, c);
         reg.set_a(new_a);
     }
@@ -915,13 +971,13 @@ impl CPU {
         };
     }
     fn check_for_interupt(&mut self) {
-        println!(
-            "Check interupt current interupt: {}, ime: {}, interupt flag: {}, interupt enable: {}",
-            self.current_interupt.is_none(),
-            self.ime,
-            self.interupt_reg.get_interupt_flag(),
-            self.interupt_reg.get_interupt_enable()
-        );
+        // println!(
+        //     "Check interupt current interupt: {}, ime: {}, interupt flag: {}, interupt enable: {}",
+        //     self.current_interupt.is_none(),
+        //     self.ime,
+        //     self.interupt_reg.get_interupt_flag(),
+        //     self.interupt_reg.get_interupt_enable()
+        // );
         if self.current_interupt.is_none() {
             if self.ime {
                 self.current_interupt = self.interupt_reg.query_interupts_flag_enable();
