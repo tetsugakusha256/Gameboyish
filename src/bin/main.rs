@@ -63,7 +63,7 @@ fn main() {
         debug_screen: GameWindow::new(144 * 2, 160 * 2),
     };
     // change to doc_emu for use with doctor
-    let mut emu = emu;
+    let mut emu = doc_emu;
     emu.init();
     let opcodes_pre = load_json("opcodes_pre.json");
     let opcodes_nopre = load_json("opcodes_nopre.json");

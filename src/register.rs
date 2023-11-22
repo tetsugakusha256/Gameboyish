@@ -10,7 +10,7 @@ pub struct Registers {
     /// 6 Subtraction flag
     /// 5 Half Carry flag
     /// 4 Carry flag
-    pub af: u16,
+    af: u16,
     pub bc: u16,
     pub de: u16,
     pub hl: u16,
@@ -30,7 +30,7 @@ impl Registers {
             pc: 0,
         }
     }
-    pub fn new_doctor()->Registers{
+    pub fn new_doctor() -> Registers {
         Registers {
             af: 0x01B0,
             bc: 0x0013,
@@ -39,13 +39,20 @@ impl Registers {
             sp: 0xFFFE,
             pc: 0x0100,
         }
-
     }
     pub fn set_flags(&mut self, z: bool, n: bool, h: bool, c: bool) {
         self.set_flag_z(z);
         self.set_flag_n(n);
         self.set_flag_h(h);
         self.set_flag_c(c);
+    }
+    pub fn get_af(&self) -> u16 {
+        self.af
+    }
+    pub fn set_af(&mut self, value: u16) {
+        // the 4 lowest bit of F should always be 0 ...
+        let value = value & 0b1111_1111_1111_0000;
+        self.af = value;
     }
     pub fn set_flag_z(&mut self, value: bool) {
         set_bit(&mut self.af, 7, value);
@@ -94,7 +101,7 @@ impl Registers {
     pub fn set_l(&mut self, val: u8) {
         set_low(&mut self.hl, val);
     }
-    pub fn set_byte_reg(&mut self, target: &NopreOperands, value: u8){
+    pub fn set_byte_reg(&mut self, target: &NopreOperands, value: u8) {
         match target {
             NopreOperands::A => self.set_a(value),
             NopreOperands::B => self.set_b(value),
@@ -103,7 +110,7 @@ impl Registers {
             NopreOperands::E => self.set_e(value),
             NopreOperands::H => self.set_h(value),
             NopreOperands::L => self.set_l(value),
-            _ => panic!("Invalid 8bit reg")
+            _ => panic!("Invalid 8bit reg"),
         }
     }
     pub fn get(&self, target: &NopreOperands) -> u8 {
@@ -115,7 +122,7 @@ impl Registers {
             NopreOperands::E => self.get_e(),
             NopreOperands::H => self.get_h(),
             NopreOperands::L => self.get_l(),
-            _ => panic!("Invalid 8bit reg")
+            _ => panic!("Invalid 8bit reg"),
         }
     }
     pub fn get_a(&self) -> u8 {

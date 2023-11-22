@@ -110,19 +110,34 @@ pub fn complement(a: u8) -> u8 {
     a ^ 0xFF
 }
 /// return (new_a, zero, carry)
-pub fn daa(a: u8, h: bool, c: bool) -> (u8, bool, bool) {
+pub fn daa(a: u8, h: bool, c: bool, n: bool) -> (u8, bool, bool) {
     let mut new_a = a;
-    let high = a.high_nibble();
     let low = a.low_4nibble();
+    let high = a.high_nibble();
     let mut c1 = false;
     let mut c2 = false;
-    if h || (low > 9) {
-        (new_a, _, _, _, c1) = addition(new_a, 0x06);
+    let mut carry = false;
+    match n {
+        true => {
+            carry = c;
+            if c {
+                (new_a, _, _, _, c2) = subtraction(new_a, 0x60);
+            }
+            if h {
+                (new_a, _, _, _, c1) = subtraction(new_a, 0x06);
+            }
+        }
+        false => {
+            if c || (new_a > 0x99) {
+                carry = true;
+                (new_a, _, _, _, c2) = addition(new_a, 0x60);
+            }
+            if h || (new_a.low_4nibble() > 0x09) {
+                (new_a, _, _, _, c1) = addition(new_a, 0x06);
+            }
+        }
     }
-    if c || (high > 9) {
-        (new_a, _, _, _, c2) = addition(new_a, 0x60);
-    }
-    (new_a, new_a == 0, c1 | c2)
+    (new_a, new_a == 0, carry)
 }
 
 //TODO:use helper function to set bit

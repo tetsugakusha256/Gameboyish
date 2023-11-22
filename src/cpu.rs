@@ -103,7 +103,7 @@ impl CPU {
             if self.log_buffer.is_some() {
                 self.log_state_to_file();
             }
-            if self.total_tick % 1000 == 0 {
+            if self.total_tick / 49359100 == 0 {
                 // println!(
                 //     "Running code: {:#04x}, cycle: {:02}, pc: {:#04x}, total ticks: {}",
                 //     self.opcode, self.cycles_since_last_cmd, self.reg.pc, self.total_tick
@@ -387,7 +387,7 @@ impl CPU {
         let reg = &mut self.reg;
         let address_operand: NopreOperands = instruction.operands[0].name.clone().into();
         let target_reg = match address_operand {
-            NopreOperands::AF => reg.af,
+            NopreOperands::AF => reg.get_af(),
             NopreOperands::BC => reg.bc,
             NopreOperands::DE => reg.de,
             NopreOperands::HL => reg.hl,
@@ -404,7 +404,7 @@ impl CPU {
         let address_operand: NopreOperands = instruction.operands[0].name.clone().into();
         let stack_value = bus.read_2_bytes_little_endian(reg.sp);
         match address_operand {
-            NopreOperands::AF => reg.af = stack_value,
+            NopreOperands::AF => reg.set_af(stack_value),
             NopreOperands::BC => reg.bc = stack_value,
             NopreOperands::DE => reg.de = stack_value,
             NopreOperands::HL => reg.hl = stack_value,
@@ -570,6 +570,7 @@ impl CPU {
             | NopreOperands::C
             | NopreOperands::D
             | NopreOperands::E
+            | NopreOperands::L
             | NopreOperands::H => compare(a, reg.get(&target_operand)),
             NopreOperands::HL => compare(a, bus.read_byte_as_cpu(reg.hl)),
             NopreOperands::n8 => compare(a, bus.read_next_byte(reg.pc)),
@@ -683,10 +684,11 @@ impl CPU {
             NopreOpcodeMnemonics::INC => self.op_inc_dec_8bit(instruction, inc),
             NopreOpcodeMnemonics::CP => self.op_cp_8bit(instruction),
             NopreOpcodeMnemonics::DAA => {
-                let (res, z, c) = daa(reg.get_a(), reg.flag_h(), reg.flag_c());
+                let (res, z, c) = daa(reg.get_a(), reg.flag_h(), reg.flag_c(), reg.flag_n());
                 reg.set_a(res);
                 reg.set_flag_z(z);
                 reg.set_flag_c(c);
+                reg.set_flag_h(false);
             }
             NopreOpcodeMnemonics::CPL => {
                 reg.set_a(complement(reg.get_a()));
