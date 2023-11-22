@@ -129,7 +129,7 @@ impl CPU {
                     self.ime,
                     self.total_tick
                 );
-                // println!("{}",text);
+                println!("{}",text);
             }
             // set cycle timing
             self.cycles_since_last_cmd = 0;

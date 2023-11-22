@@ -34,7 +34,7 @@ impl Emulator {
         self.debug_screen.init("Debug",false);
         self.bus
             .borrow_mut()
-            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/test_roms/mts-20221022-1430-8d742b9/acceptance/bits/reg_f.gb")
+            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/05-op rp.gb")
             .unwrap();
         // Load boot rom
         self.bus.borrow_mut().init();
@@ -99,7 +99,7 @@ impl Emulator {
             // println!("Bg map : {:?}", self.bus.borrow().read_bytes_range(0x9800, 1024));
         }
 
-        if self.cycles > 50000*50{
+        if self.cycles > 50000*500000{
             self.pause_resume();
         }
     }

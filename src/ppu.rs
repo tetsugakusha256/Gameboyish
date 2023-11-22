@@ -134,13 +134,13 @@ impl PPU {
             let y = scy % 144;
             let x = scx % 160;
             // println!("Drawing line {} of background", self.ly);
-            // Get the background range
-            // Get the tile id at current pixel
-            // Get the line from tile
+
+
+            // TODO: need to add + 12 somewhere because the map is 32*32 but now I assume it's 20*20
             for i in 0..20 {
                 let (l, h) = self
                     .vram
-                    .get_background_tile_line(ly_screen % 8, i + (self.ly as u16 / 8) * 20);
+                    .get_background_tile_line(ly_screen % 8, i + (self.ly as u16 / 8) * 32);
                 let line_gray_value = tile_fuse_byte_u8(l, h);
                 self.insert_gray_vec_into_line_pixels(&line_gray_value, 8 * i as usize);
             }

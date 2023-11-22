@@ -47,7 +47,7 @@ impl VRAM {
         }
         let bus = self.bus.borrow();
         let mut tile_id = bus.read_byte_as_cpu(tile_id_address) as u16;
-        println!("tile id: {}, line: {}", tile_id, line);
+        // println!("tile id: {}, line: {}", tile_id, line);
         // Convert tile number to tile address
         let tile_address = match self.get_lcd_control().bg_win_tiles() {
             true => 0x8000u16 + tile_id * 16,
@@ -57,7 +57,7 @@ impl VRAM {
                 _ => panic!("Impossible"),
             },
         };
-        println!("tile address: {:#06x}", tile_address);
+        // println!("tile address: {:#06x}", tile_address);
         (
             bus.read_byte_as_cpu(tile_address + 2 * line as u16),
             bus.read_byte_as_cpu(tile_address + 2 * line as u16 + 1),
