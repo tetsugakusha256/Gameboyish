@@ -34,7 +34,7 @@ impl Emulator {
         self.debug_screen.init("Debug",false);
         self.bus
             .borrow_mut()
-            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/09-op r,r.gb")
+            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/10-bit ops.gb")
             .unwrap();
         // Load boot rom
         // self.bus.borrow_mut().init();
@@ -99,7 +99,7 @@ impl Emulator {
             // println!("Bg map : {:?}", self.bus.borrow().read_bytes_range(0x9800, 1024));
         }
 
-        if self.cycles > 148318000{
+        if self.cycles > 1483180000{
             self.pause_resume();
         }
     }

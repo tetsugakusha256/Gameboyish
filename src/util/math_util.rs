@@ -178,20 +178,17 @@ pub fn shift_right_arithmetic(a: u8) -> (u8, bool, bool, bool, bool) {
     let sign = (a & 0b1000_0000) != 0;
     let overflow = a.get_bit(0);
     //we remove the sign bit to avoid it being carried down
-    let mut res = a & 0b0111_1111;
-    res = res >> 1;
+    // let mut res = a & 0b0111_1111;
+    let mut res = a >> 1;
     //we put the sign bit back
     res.set_bit(7, sign);
     (res, res == 0, false, false, overflow)
 }
 pub fn shift_left_arithmetic(a: u8) -> (u8, bool, bool, bool, bool) {
-    let sign = a.get_bit(7);
-    let overflow = a.get_bit(6);
+    let overflow = a.get_bit(7);
     //we remove the sign bit to avoid it being carried down
-    let mut res = a & 0b0111_1111;
-    res = res << 1;
+    let res = a << 1;
     //we put the sign bit back
-    res.set_bit(7, sign);
     (res, res == 0, false, false, overflow)
 }
 // test result(z flag), n, h

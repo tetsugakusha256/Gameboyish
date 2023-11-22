@@ -107,13 +107,13 @@ impl CPU {
             if self.log_buffer.is_some() {
                 self.log_state_to_file();
             }
-            if self.total_tick % 10000 == 0 {
+            if self.total_tick % 100000 == 0 {
                 println!(
                     "Instruction per milisecond: {}",
                     self.total_tick as u128 / self.start_time.elapsed().as_millis()
                 )
             }
-            if self.total_tick % 1000 == 0 {
+            if self.total_tick % 100000 == 0 {
                 // println!(
                 //     "Running code: {:#04x}, cycle: {:02}, pc: {:#04x}, total ticks: {}",
                 //     self.opcode, self.cycles_since_last_cmd, self.reg.pc, self.total_tick
@@ -139,7 +139,7 @@ impl CPU {
                     self.ime,
                     self.total_tick
                 );
-                // println!("{}", text);
+                println!("{}", text);
             }
             // set cycle timing
             self.cycles_since_last_cmd = 0;
@@ -895,18 +895,23 @@ impl CPU {
             Ok(number) => number,
             Err(_) => panic!("res/set instruction operand not a parsable number"),
         };
+        println!("Instruction : {}", instruction);
+        println!("Bit numbre: {}", bit_number);
         let b = instruction.operands[1].name.clone().into();
-        let bus = self.bus.borrow_mut();
+        let mut bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         match b {
-            NopreOperands::A => f(reg.get_a(), bit_number),
-            NopreOperands::B => f(reg.get_b(), bit_number),
-            NopreOperands::C => f(reg.get_c(), bit_number),
-            NopreOperands::D => f(reg.get_d(), bit_number),
-            NopreOperands::E => f(reg.get_e(), bit_number),
-            NopreOperands::H => f(reg.get_h(), bit_number),
-            NopreOperands::L => f(reg.get_l(), bit_number),
-            NopreOperands::HL => f(bus.read_byte_as_cpu(reg.hl), bit_number),
+            NopreOperands::A => reg.set_a(f(reg.get_a(), bit_number)),
+            NopreOperands::B => reg.set_b(f(reg.get_b(), bit_number)),
+            NopreOperands::C => reg.set_c(f(reg.get_c(), bit_number)),
+            NopreOperands::D => reg.set_d(f(reg.get_d(), bit_number)),
+            NopreOperands::E => reg.set_e(f(reg.get_e(), bit_number)),
+            NopreOperands::H => reg.set_h(f(reg.get_h(), bit_number)),
+            NopreOperands::L => reg.set_l(f(reg.get_l(), bit_number)),
+            NopreOperands::HL => {
+                let byte = f(bus.read_byte_as_cpu(reg.hl), bit_number);
+                bus.write_byte(reg.hl, byte);
+            }
             NopreOperands::INVALID => panic!("Invalid operand"),
             _ => panic!("Missing operand for res/set ?"),
         };
