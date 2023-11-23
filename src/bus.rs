@@ -347,24 +347,6 @@ impl LCDStatusReg {
         StatInteruptType::None
     }
 }
-pub struct WinBackPosReg {
-    bus: Rc<RefCell<Bus>>,
-}
-impl WinBackPosReg {
-    pub fn new(bus: Rc<RefCell<Bus>>) -> WinBackPosReg {
-        WinBackPosReg { bus }
-    }
-    /// Return (scx, scy)
-    pub fn get_window_pos(&self) -> (u8, u8) {
-        let bus = self.bus.borrow();
-        return (bus.read_byte(0xFF4B), bus.read_byte(0xFF4A));
-    }
-    /// Return (scx, scy)
-    pub fn get_background_scroll(&self) -> (u8, u8) {
-        let bus = self.bus.borrow();
-        return (bus.read_byte(0xFF43), bus.read_byte(0xFF42));
-    }
-}
 pub struct LCDControlReg {
     bus: Rc<RefCell<Bus>>,
 }
@@ -507,6 +489,7 @@ impl Bus {
         let high = address.high_8nibble();
         let low = address.high_8nibble();
         let small_endian_address = ((low as u16) << 8) + (high as u16);
+
         // Doctor
         if small_endian_address == 0xFF02 || small_endian_address == 0xFF44 {
             return 0x90;
@@ -514,6 +497,7 @@ impl Bus {
         if small_endian_address == 0xFF44 {
             return 0x90;
         }
+
         self.read_byte_as_cpu(small_endian_address)
     }
     pub fn read_2_bytes_little_endian(&self, address: u16) -> u16 {
@@ -561,6 +545,10 @@ impl Bus {
     }
 
     pub fn write_byte(&mut self, address: u16, value: u8) {
+        let range = 0x0000u16..0x0099;
+        if range.contains(&address) {
+            println!("Writing begining: address{}", address);
+        }
         self.data[address as usize] = value;
     }
     pub fn write_byte_as_cpu(&mut self, address: u16, value: u8) {

@@ -107,13 +107,22 @@ impl CPU {
             if self.log_buffer.is_some() {
                 self.log_state_to_file();
             }
-            if self.total_tick % 100000 == 0 {
+            if self.total_tick % 300000 == 0 {
                 println!(
                     "Instruction per milisecond: {}",
                     self.total_tick as u128 / self.start_time.elapsed().as_millis()
                 )
             }
-            if self.total_tick % 100000 == 0 {
+
+            if self.bus.borrow().read_byte(0x0000) != 60 && self.total_tick < 254076{
+                println!("STOP {}", self.total_tick);
+            }
+
+            if self.total_tick % 254078 == 0 {
+                // println!(
+                //     "range init: {:?}",
+                //     self.bus.borrow().read_bytes_range(0x0000, 99)
+                // );
                 // println!(
                 //     "Running code: {:#04x}, cycle: {:02}, pc: {:#04x}, total ticks: {}",
                 //     self.opcode, self.cycles_since_last_cmd, self.reg.pc, self.total_tick
@@ -121,7 +130,7 @@ impl CPU {
                 let reg = &self.reg;
                 let bus = self.bus.borrow();
                 let mut text = format!(
-                    "A:{:#04x} F:{:#04x} B:{:#04x} C:{:#04x} D:{:#04x} E:{:#04x} H:{:#04x} L:{:#04x} SP:{:#06x} PC:{:#06x} PCMEM:{:#04x},{:#04x},{:#04x},{:#04x}, ime: {}, ticks: {}",
+                    "A:{:#04x} F:{:#04x} B:{:#04x} C:{:#04x} D:{:#04x} E:{:#04x} H:{:#04x} L:{:#04x} SP:{:#06x} PC:{:#06x} PCMEM:{:#04x},{:#04x},{:#04x},{:#04x}, ime: {}, tic: {}",
                     reg.get_a(),
                     reg.get_f(),
                     reg.get_b(),
@@ -433,7 +442,7 @@ impl CPU {
             NopreOperands::X08 => 0x0008,
             NopreOperands::X10 => 0x0010,
             NopreOperands::X18 => 0x0018,
-            NopreOperands::X20 => 0x0028,
+            NopreOperands::X20 => 0x0020,
             NopreOperands::X28 => 0x0028,
             NopreOperands::X30 => 0x0030,
             NopreOperands::X38 => 0x0038,
@@ -446,7 +455,7 @@ impl CPU {
         //call to nn, SP=SP-2, (SP)=PC, PC=nn
         //TODO: CHECK HOW TO WRITE THE 2BYTES which endian to use?
         reg.sp = reg.sp.wrapping_sub(2);
-        bus.write_2_bytes_little_endian(address, reg.pc);
+        bus.write_2_bytes_little_endian(reg.sp, reg.pc + 1);
         self.next_pc = address;
     }
     //call

@@ -28,13 +28,13 @@ impl TimerReg {
                     tima + 1
                 };
                 // Request timer interrupt
-                println!(
-                    "TIMER REQUEST INTERRUPT, div {}, tima {}, tma {}, tac {}",
-                    self.get_div_ff04(),
-                    self.get_tima_ff05(),
-                    self.get_tma_ff06(),
-                    self.get_tac_ff07()
-                );
+                // println!(
+                //     "TIMER REQUEST INTERRUPT, div {}, tima {}, tma {}, tac {}",
+                //     self.get_div_ff04(),
+                //     self.get_tima_ff05(),
+                //     self.get_tma_ff06(),
+                //     self.get_tac_ff07()
+                // );
                 self.bus.borrow_mut().write_bit(0xff0f, 2, true);
                 self.bus.borrow_mut().write_byte(0xff05, new_tima);
             }

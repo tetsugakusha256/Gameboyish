@@ -1,13 +1,12 @@
-use std::{cell::RefCell, rc::Rc, time::Instant};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    bus::{Bus, LCDControlReg, LCDStatusReg, WinBackPosReg, VRAM},
+    bus::{Bus, LCDControlReg, LCDStatusReg, VRAM},
     util::tiles_util::{tile_fuse_byte_u8, ScreenVector},
-    windows::game_window::{GameWindow, GAMEBOY_SCREEN_HEIGHT, GAMEBOY_SCREEN_WIDTH},
+    windows::game_window::{GAMEBOY_SCREEN_HEIGHT, GAMEBOY_SCREEN_WIDTH},
 };
 
-#[derive(Debug)]
-#[derive(PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PPUModes {
     Mode0,
     Mode1,
@@ -32,7 +31,6 @@ pub struct PPU {
     pub vram: VRAM,
     pub lcd_status: LCDStatusReg,
     pub lcd_control: LCDControlReg,
-    pub win_back_mem: WinBackPosReg,
 
     pub screen_array: ScreenVector,
     pub current_mode: PPUModes,
@@ -54,7 +52,6 @@ impl PPU {
             vram: VRAM::new(Rc::clone(&bus)),
             lcd_status: LCDStatusReg::new(Rc::clone(&bus)),
             lcd_control: LCDControlReg::new(Rc::clone(&bus)),
-            win_back_mem: WinBackPosReg::new(Rc::clone(&bus)),
             screen_array: ScreenVector::new_with_screen_size(
                 GAMEBOY_SCREEN_WIDTH,
                 GAMEBOY_SCREEN_HEIGHT,
@@ -129,21 +126,36 @@ impl PPU {
             self.lcd_status.set_ppu_mode(&self.current_mode);
 
             let ly_screen = self.ly + 16;
-            // background
-            let (scx, scy) = self.vram.get_background();
-            let y = scy % 144;
-            let x = scx % 160;
-            // println!("Drawing line {} of background", self.ly);
 
-            // TODO: need to add + 12 somewhere because the map is 32*32 but now I assume it's 20*20
+            // Background
+            let (scx, scy) = self.vram.get_background();
+            // println!("Drawing line {} of background", self.ly);
+            // println!("scy {},scx {}", scy, scx);
+
+            // Background line calculation
             for i in 0..20 {
-                let (l, h) = self
-                    .vram
-                    .get_background_tile_line(ly_screen % 8, i + (self.ly as u16 / 8) * 32);
+                // Get the 2 bytes for the correct line of the correct tile
+                let (l, h) = self.vram.get_background_tile_line(
+                    (scy.wrapping_add(self.ly)) % 8,
+                // TODO: add scx / 8 +
+                     i + (scy.wrapping_add(self.ly) as u16 / 8) * 32,
+                );
                 let line_gray_value = tile_fuse_byte_u8(l, h);
+                // TODO: add a shift of the array by scx % 8
                 self.insert_gray_vec_into_line_pixels(&line_gray_value, 8 * i as usize);
             }
-            // println!("Printing backgroung : {:?}", self.line_pixels);
+
+            // Window line calculation
+            for i in 0..20 {
+                // Get the 2 bytes for the correct line of the correct tile
+                let (l, h) = self.vram.get_background_tile_line(
+                    (scy.wrapping_add(self.ly)) % 8,
+                     i + (scy.wrapping_add(self.ly) as u16 / 8) * 32,
+                );
+                let line_gray_value = tile_fuse_byte_u8(l, h);
+                // TODO: add insert function that will take transparency into account
+                self.insert_gray_vec_into_line_pixels(&line_gray_value, 8 * i as usize);
+            }
 
             let obj_tile_map = self.vram.get_oam_sprites_vec();
             let obj_height = if self.lcd_control.obj_size() { 8 } else { 16 };
