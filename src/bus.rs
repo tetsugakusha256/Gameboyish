@@ -197,6 +197,7 @@ impl InteruptReg {
     // Return the hightest priority interupts that has it's flag and is enable
     pub fn query_interupts_flag_enable(&self) -> Option<InteruptType> {
         let is_interupts = self.get_interupt_flag() & self.get_interupt_enable();
+        println!("query_interupts flag: {}, enable: {}", self.get_interupt_flag(), self.get_interupt_enable());
         for i in 0..=4 {
             if is_interupts.get_bit(i) {
                 return Some(i.into());

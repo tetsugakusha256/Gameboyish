@@ -34,9 +34,7 @@ impl Emulator {
         self.debug_screen.init("Debug", false);
         self.bus
             .borrow_mut()
-            .load_cartridge(
-                "/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/02-interrupts.gb",
-            )
+            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/02-interrupts.gb")
             .unwrap();
         // Load boot rom
         // self.bus.borrow_mut().init();
@@ -85,10 +83,10 @@ impl Emulator {
         // put a bit to set if we want to check direction or buttons
         // then read the value (How many cycles in between those?)
         // self.io_handler.next_tick();
-        self.timer.next_tick();
         self.cpu.next_tick();
         // println!("cycle : {}", self.cycles);
         self.ppu.next_tick();
+        self.timer.next_tick();
         // self.bus.borrow_mut().write_slice(0x8000, &[0x56u8;8192]);
 
         if self.cycles % 70224 == 0 {

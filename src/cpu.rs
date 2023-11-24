@@ -26,6 +26,7 @@ pub struct CPU {
     cycles_to_wait: u8,
     total_tick: u64,
     start_time: Instant,
+    halt: bool,
 
     ime: bool,
     interupt_reg: InteruptReg,
@@ -53,6 +54,7 @@ impl CPU {
             instruction_dict_notprefixed: load_json("opcodes_nopre.json").unwrap(),
             instruction_dict_prefixed: load_json("opcodes_pre.json").unwrap(),
             ime: false,
+            halt: false,
             next_pc: 0x00,
             log_buffer: None,
             current_interupt: None,
@@ -73,6 +75,7 @@ impl CPU {
             instruction_dict_notprefixed: load_json("opcodes_nopre.json").unwrap(),
             instruction_dict_prefixed: load_json("opcodes_pre.json").unwrap(),
             ime: false,
+            halt: false,
             next_pc: 0x00,
             log_buffer: None,
             current_interupt: None,
@@ -84,6 +87,9 @@ impl CPU {
     pub fn init_with_log(&mut self) {
         self.init_log_file("log/log_file.txt");
     }
+    pub fn halt(&mut self) {
+        self.halt = true;
+    }
     pub fn stop(&mut self) {
         // TODO: what should actually happen is a way to stop the timer from ticking
         self.bus.borrow_mut().write_byte_as_cpu(0xFF04, 0x00);
@@ -92,18 +98,20 @@ impl CPU {
     // or wait and then do stuff
     pub fn next_tick(&mut self) {
         self.cycles_since_last_cmd += 1;
-        if self.cycles_since_last_cmd >= self.cycles_to_wait as u64 {
+        self.check_for_interupt();
+
+        // if interupt update opcode
+        if self.interupt_happened {
+            self.interupt_happened = false;
+            self.reg.pc = self.next_pc;
+            self.opcode = self.bus.borrow().read_byte_as_cpu(self.reg.pc);
+        }
+
+        // next cpu cycle
+        if !self.halt && self.cycles_since_last_cmd >= self.cycles_to_wait as u64 {
             self.total_tick += 1;
             // Run next command
             self.opcode = self.bus.borrow().read_byte_as_cpu(self.reg.pc);
-            self.check_for_interupt();
-
-            // if interupt update opcode
-            if self.interupt_happened {
-                self.interupt_happened = false;
-                self.reg.pc = self.next_pc;
-                self.opcode = self.bus.borrow().read_byte_as_cpu(self.reg.pc);
-            }
             if self.log_buffer.is_some() {
                 self.log_state_to_file();
             }
@@ -113,20 +121,22 @@ impl CPU {
                     self.total_tick as u128 / self.start_time.elapsed().as_millis()
                 )
             }
-
-            if self.bus.borrow().read_byte(0x0000) != 60 && self.total_tick < 254076{
-                println!("STOP {}", self.total_tick);
+            if self.bus.borrow().read_byte(0x0000) != 60 && self.total_tick < 254076 {
+                // println!("STOP {}", self.total_tick);
             }
-
-            if self.total_tick % 254078 == 0 {
-                // println!(
-                //     "range init: {:?}",
-                //     self.bus.borrow().read_bytes_range(0x0000, 99)
-                // );
-                // println!(
-                //     "Running code: {:#04x}, cycle: {:02}, pc: {:#04x}, total ticks: {}",
-                //     self.opcode, self.cycles_since_last_cmd, self.reg.pc, self.total_tick
-                // );
+            if self.total_tick / 152038 == 0 {
+                {
+                    let bus = self.bus.borrow();
+                    println!(
+                        "Timer  div : {}, tima : {}, tma : {}, tac : {}, interupt flag : {}, inter enable : {}",
+                        bus.read_byte(0xFF04),
+                        bus.read_byte(0xFF05),
+                        bus.read_byte(0xFF06),
+                        bus.read_byte(0xFF07),
+                        bus.read_byte(0xFF0F),
+                        bus.read_byte(0xFFFF),
+                    );
+                }
                 let reg = &self.reg;
                 let bus = self.bus.borrow();
                 let mut text = format!(
@@ -154,6 +164,19 @@ impl CPU {
             self.cycles_since_last_cmd = 0;
             // Run opcode
             self.tick(self.opcode);
+            // {
+            //     let bus = self.bus.borrow();
+            //     println!(
+            //             "Timer  div : {}, tima : {}, tma : {}, tac : {}, interupt flag : {}, inter enable : {}",
+            //             bus.read_byte(0xFF04),
+            //             bus.read_byte(0xFF05),
+            //             bus.read_byte(0xFF06),
+            //             bus.read_byte(0xFF07),
+            //             bus.read_byte(0xFF0F),
+            //             bus.read_byte(0xFFFF),
+            //         );
+            // }
+            // println!("halt:{}", self.halt);
             // Applying the next_pc mem that might have been altered by a jump operation
             // println!("pc: {}, next pc: {}", self.reg.pc, self.next_pc);
             self.reg.pc = self.next_pc;
@@ -271,7 +294,7 @@ impl CPU {
             NopreOpcodeMnemonics::NOP => (),
             NopreOpcodeMnemonics::DI => self.ime = false,
             NopreOpcodeMnemonics::EI => self.ime = true,
-            NopreOpcodeMnemonics::HALT => self.stop(),
+            NopreOpcodeMnemonics::HALT => self.halt(),
             NopreOpcodeMnemonics::STOP => self.stop(),
             NopreOpcodeMnemonics::INVALID => panic!("Illegal invalid instruction INVALID"),
         }
@@ -1005,7 +1028,7 @@ impl CPU {
         //     self.interupt_reg.get_interupt_enable()
         // );
         if self.current_interupt.is_none() {
-            if self.ime {
+            if self.ime || self.halt {
                 self.current_interupt = self.interupt_reg.query_interupts_flag_enable();
             }
         }
@@ -1017,76 +1040,32 @@ impl CPU {
             // push current pc on stack
             let reg = &mut self.reg;
 
-            reg.sp = reg.sp.wrapping_sub(2);
-            self.bus
-                .borrow_mut()
-                .write_2_bytes_little_endian(reg.sp, reg.pc);
-
             let current_interupt = self.current_interupt.as_ref().unwrap();
             // set pc to correct address
-            self.next_pc = match current_interupt {
-                InteruptType::VBlank => 0x0040,
-                InteruptType::LCD => 0x0048,
-                InteruptType::Timer => 0x0050,
-                InteruptType::Serial => 0x0058,
-                InteruptType::Joypad => 0x0060,
+            self.next_pc = if self.halt && !self.ime {
+                println!("pc {:#06x}", self.reg.pc);
+                self.reg.pc
+            } else {
+                self.interupt_reg.reset_flag(current_interupt);
+                reg.sp = reg.sp.wrapping_sub(2);
+                self.bus
+                    .borrow_mut()
+                    .write_2_bytes_little_endian(reg.sp, reg.pc);
+                match current_interupt {
+                    InteruptType::VBlank => 0x0040,
+                    InteruptType::LCD => 0x0048,
+                    InteruptType::Timer => 0x0050,
+                    InteruptType::Serial => 0x0058,
+                    InteruptType::Joypad => 0x0060,
+                }
             };
-            // TODO: I don't understand but apparenty I need this?
-            // self.next_pc += 1;
 
             // println!("next_pc in check interupt : {:#04x}", self.next_pc);
             self.ime = false;
-            self.interupt_reg.reset_flag(current_interupt);
+            self.halt = false;
             self.interupt_stage = 0;
             self.current_interupt = None;
             self.interupt_happened = true;
-
-            // TODO: for now removed, do all in one step as it seems to be like this in the
-            // the test interupt file
-
-            // self.interupt_stage += 1;
-            //
-            // Set a "interupt step x var"
-            // step 1 nop
-            // step 2 nop
-            // step 3 push
-            // step 4 pc = interupt address
-            // Clear flag?
-            //
-            // match self.interupt_stage {
-            //     1 => {
-            //         self.ime = false;
-            //         self.opcode = 0x00;
-            //     }
-            //     2 => {
-            //         self.opcode = 0x00;
-            //     }
-            //     3 => {
-            //         // HACK: A third nop that shouldn't happen to allow for 2 cycles to pass
-            //         // While pushing manually
-            //         // Idea: use unused opcode to add one that pushes pc to sp
-            //
-            //         // self.opcode = 0x00;
-            //
-            //         // push current
-            //         let reg = &mut self.reg;
-            //         let mut bus = self.bus.borrow_mut();
-            //         reg.sp = reg.sp - 2;
-            //         bus.write_2_bytes_little_endian(reg.sp, reg.pc);
-            //     }
-            //     4 => {
-            //         self.next_pc = match self.current_interupt.as_ref().unwrap() {
-            //             InteruptType::VBlank => 0x0040,
-            //             InteruptType::LCD => 0x0048,
-            //             InteruptType::Timer => 0x0050,
-            //             InteruptType::Serial => 0x0058,
-            //             InteruptType::Joypad => 0x0060,
-            //         };
-            //         self.interupt_stage = 0;
-            //         self.current_interupt = None;
-            //     }
-            //     _ => panic!("Interupt stage >4 should be impossible"),
-            // }
         }
     }
     fn init_log_file(&mut self, file_path: &str) {
