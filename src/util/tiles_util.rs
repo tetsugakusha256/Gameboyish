@@ -1,5 +1,5 @@
 use crate::{
-    bus::{OAMSprite, VRAM},
+    bus::OAMSprite,
     windows::game_window::from_u32_gray_to_rgb,
 };
 
@@ -29,7 +29,7 @@ impl ScreenVector {
         }
     }
     // TODO:
-    pub fn insert_object_tile(&mut self, object_tile: &OAMSprite, vram: &VRAM) {}
+    // pub fn insert_object_tile(&mut self, object_tile: &OAMSprite, vram: &VRAM) {}
     pub fn set_x_y_gray(&mut self, x: usize, y: usize, gray_value: u8) {
         // println!("Set x y pixel, x: {}, y: {}", x, y);
         if x >= self.width || y >= self.height() {

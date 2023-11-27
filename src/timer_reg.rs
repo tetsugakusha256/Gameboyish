@@ -1,53 +1,70 @@
-use crate::{bus::Bus, util::u8_traits::Bit};
+use crate::{
+    bus::Bus,
+    util::u8_traits::{Bit, NibblesU16, NibblesU8},
+};
 use std::{cell::RefCell, rc::Rc};
 
 pub struct TimerReg {
     bus: Rc<RefCell<Bus>>,
-    tick_counter: u64,
 }
 impl TimerReg {
     pub fn new(bus: Rc<RefCell<Bus>>) -> TimerReg {
-        TimerReg {
-            bus,
-            tick_counter: 0,
-        }
+        TimerReg { bus }
     }
     pub fn next_tick(&mut self) {
-        self.tick_counter = self.tick_counter.wrapping_add(1);
+        {
+            let mut bus = self.bus.borrow_mut();
+            bus.timer_div_intern = bus.timer_div_intern.wrapping_add(1);
+        }
         self.div_tick();
         self.tima_tick();
     }
+    // TODO: refactor
     fn tima_tick(&mut self) {
+        // If tima is enable
         if self.get_tac_ff07().get_bit(2) {
-            if (self.tick_counter % self.get_tima_rate()) == 0 {
-                let tima = self.get_tima_ff05();
+            let tima_rate = self.get_tima_rate();
+            let mut bus = self.bus.borrow_mut();
+            bus.timer_tima_intern = bus.timer_tima_intern.wrapping_add(1);
+            println!(
+                "tima_rate {}, tima_intern {}",
+                tima_rate, bus.timer_tima_intern
+            );
+
+            if bus.timer_tima_intern >= tima_rate {
+                let mut tima = bus.read_byte(0xFF05);
+                if tima != 0 {
+                    tima = tima + 1;
+                }
+
                 // When overflow reset to value of ff06
-                let new_tima = if tima == 255 {
-                    self.bus.borrow_mut().write_bit(0xff0f, 2, true);
-                    // Request timer interrupt
-                    // println!(
-                    //     "TIMER REQUEST INTERRUPT, div {}, tima {}, tma {}, tac {}, flags {}",
-                    //     self.get_div_ff04(),
-                    //     self.get_tima_ff05(),
-                    //     self.get_tma_ff06(),
-                    //     self.get_tac_ff07(),
-                    //     self.bus.borrow().read_byte(0xff0f),
-                    // );
-                    self.get_tma_ff06()
-                } else {
-                    tima + 1
+                let tima = match tima {
+                    255 => 0,
+                    0 => {
+                        // Setting flag
+                        bus.write_bit(0xff0f, 2, true);
+                        let a = bus.read_byte(0xff06);
+                        if a == 0 {
+                            1
+                        } else {
+                            a
+                        }
+                    }
+                    _ => tima,
                 };
-                self.bus.borrow_mut().write_byte(0xff05, new_tima);
+                bus.write_byte(0xff05, tima);
+
+                bus.timer_tima_intern -= tima_rate
             }
         }
     }
     fn div_tick(&mut self) {
-        if self.tick_counter % 255 == 0 {
-            let new_div = self.get_div_ff04().wrapping_add(1);
-            self.bus.borrow_mut().write_byte(0xff04, new_div);
-        }
+        let timer_inter = self.bus.borrow().timer_div_intern;
+        self.bus
+            .borrow_mut()
+            .write_byte(0xff04, timer_inter.high_8nibble());
     }
-    fn get_tima_rate(&self) -> u64 {
+    fn get_tima_rate(&self) -> u16 {
         let byte = self.get_tac_ff07();
         let bits = (byte.get_bit(1), byte.get_bit(0));
         match bits {

@@ -1,5 +1,5 @@
 use crate::{
-    ppu::{PPUModes, VideoMemBlock},
+    ppu::PPUModes,
     util::{
         cartridge_util::load,
         error_type::Errors,
@@ -8,147 +8,6 @@ use crate::{
 };
 use std::{cell::RefCell, rc::Rc};
 
-pub struct VRAM {
-    bus: Rc<RefCell<Bus>>,
-}
-impl VRAM {
-    pub fn new(bus: Rc<RefCell<Bus>>) -> VRAM {
-        VRAM { bus }
-    }
-    // Return (scx, scy)
-    pub fn get_background(&self) -> (u8, u8) {
-        let bus = self.bus.borrow();
-        (bus.read_byte(0xFF43), bus.read_byte(0xFF42))
-    }
-    pub fn get_window(&self) -> WindowReg {
-        let bus = self.bus.borrow();
-        WindowReg {
-            wy: bus.read_byte(0xFF4A),
-            wx: bus.read_byte(0xFF4B),
-        }
-    }
-    // tile_number = the tile_number in the bg tile map(the map that stores id)
-    // So it goes above 256 because the screen can show 20*18=360 tile on the screen
-    pub fn get_background_tile_line(&self, y_offset: u8, tile_number: u16) -> (u8, u8) {
-        // println!(
-        //     "tile line : y_offset {}, tile_numbex: {}",
-        //     y_offset, tile_number
-        // );
-        let address = match self.get_lcd_control().bg_tile_map() {
-            true => 0x9C00,
-            false => 0x9800,
-        };
-        self.get_tile_x_line_2bytes(address + tile_number as u16, y_offset)
-    }
-    // get the two bytes responsible for the x line tile color
-    fn get_tile_x_line_2bytes(&self, tile_id_address: u16, line: u8) -> (u8, u8) {
-        if line > 7 {
-            panic!("Error");
-        }
-        let bus = self.bus.borrow();
-        let mut tile_id = bus.read_byte_as_cpu(tile_id_address) as u16;
-        // println!("tile id: {}, line: {}", tile_id, line);
-        // Convert tile number to tile address
-        let tile_address = match self.get_lcd_control().bg_win_tiles() {
-            true => 0x8000u16 + tile_id * 16,
-            false => match tile_id {
-                0..=127 => 0x9000u16 + tile_id * 16,
-                128..=255 => 0x8800u16 + tile_id * 16 - 128,
-                _ => panic!("Impossible"),
-            },
-        };
-        // println!("tile address: {:#06x}", tile_address);
-        (
-            bus.read_byte_as_cpu(tile_address + 2 * line as u16),
-            bus.read_byte_as_cpu(tile_address + 2 * line as u16 + 1),
-        )
-    }
-    pub fn get_tile_line(&self, y_offset: u8, tile_number: u8, size_16bit: bool) -> (u8, u8) {
-        let (mut y_offset, mut tile_number) = (y_offset, tile_number);
-        if size_16bit && y_offset > 7 {
-            y_offset = y_offset - 8;
-            tile_number += 1;
-        }
-        self.get_tile_x_line_2bytes(0x8000 + tile_number as u16, y_offset)
-    }
-    pub fn lock_oam(&mut self) {
-        self.bus.borrow_mut().lock_oam();
-    }
-    pub fn unlock_oam(&mut self) {
-        self.bus.borrow_mut().unlock_oam();
-    }
-    pub fn lock_vram(&mut self) {
-        self.bus.borrow_mut().lock_vram();
-    }
-    pub fn unlock_vram(&mut self) {
-        self.bus.borrow_mut().unlock_vram();
-    }
-    pub fn get_lcd_control(&self) -> LCDControlReg {
-        LCDControlReg {
-            bus: Rc::clone(&self.bus),
-        }
-    }
-    pub fn set_ly(&mut self, value: u8) {
-        self.bus.borrow_mut().write_byte(0xFF44, value)
-    }
-    pub fn get_ly(&self) -> u8 {
-        self.bus.borrow().read_byte(0xFF44)
-    }
-    // get all 40 objects OAMSprite
-    pub fn get_oam_sprites_vec(&self) -> Vec<OAMSprite> {
-        let mut oam_vec = vec![];
-        let oam_mem_start = 0xFE00;
-        let bus = self.bus.borrow();
-        for i in 0x00..0x40 {
-            oam_vec.push(OAMSprite {
-                y: bus.read_byte(oam_mem_start + i * 4),
-                x: bus.read_byte(oam_mem_start + i * 4 + 1),
-                tile_number: bus.read_byte(oam_mem_start + i * 4 + 2),
-                flags: bus.read_byte(oam_mem_start + i * 4 + 3),
-            })
-        }
-        oam_vec
-    }
-    pub fn win_tile_map_vec(&self) -> Vec<u8> {
-        let address;
-        if self.get_lcd_control().win_tile_map() {
-            address = 0x9C00u16;
-        } else {
-            address = 0x9800u16;
-        }
-        self.bus.borrow().read_bytes_range(address, 1024).to_vec()
-    }
-    pub fn bg_tile_map_vec(&self) -> Vec<u8> {
-        let address;
-        if self.get_lcd_control().bg_tile_map() {
-            address = 0x9C00u16;
-        } else {
-            address = 0x9800u16;
-        }
-        self.bus.borrow().read_bytes_range(address, 1024).to_vec()
-    }
-    // Return active Background tile memory
-    pub fn bg_win_tile_memory_vec(&self) -> Vec<u8> {
-        let address;
-        if self.get_lcd_control().bg_win_tiles() {
-            address = 0x8000u16;
-        } else {
-            address = 0x8800u16;
-        }
-        self.bus
-            .borrow()
-            .read_bytes_range(address, 2 * 2048)
-            .to_vec()
-    }
-}
-pub struct BackgroundReg {
-    pub scy: u8,
-    pub scx: u8,
-}
-pub struct WindowReg {
-    pub wy: u8,
-    pub wx: u8,
-}
 #[derive(Debug)]
 pub enum InteruptType {
     VBlank,
@@ -197,7 +56,11 @@ impl InteruptReg {
     // Return the hightest priority interupts that has it's flag and is enable
     pub fn query_interupts_flag_enable(&self) -> Option<InteruptType> {
         let is_interupts = self.get_interupt_flag() & self.get_interupt_enable();
-        println!("query_interupts flag: {}, enable: {}", self.get_interupt_flag(), self.get_interupt_enable());
+        println!(
+            "query_interupts flag: {}, enable: {}",
+            self.get_interupt_flag(),
+            self.get_interupt_enable()
+        );
         for i in 0..=4 {
             if is_interupts.get_bit(i) {
                 return Some(i.into());
@@ -349,7 +212,7 @@ impl LCDStatusReg {
     }
 }
 pub struct LCDControlReg {
-    bus: Rc<RefCell<Bus>>,
+    pub bus: Rc<RefCell<Bus>>,
 }
 impl LCDControlReg {
     pub fn new(bus: Rc<RefCell<Bus>>) -> LCDControlReg {
@@ -405,7 +268,8 @@ impl OAMSprite {
 
 pub struct Bus {
     pub data: [u8; 0x1_0000],
-    pub video_mem_block: VideoMemBlock,
+    pub timer_div_intern: u16,
+    pub timer_tima_intern: u16,
     vram_lock: bool,
     oam_lock: bool,
 }
@@ -442,9 +306,10 @@ impl Bus {
     pub fn new() -> Bus {
         Bus {
             data: [0x00; 0x1_0000],
-            video_mem_block: VideoMemBlock::None,
             vram_lock: false,
             oam_lock: false,
+            timer_div_intern: 0,
+            timer_tima_intern: 0,
         }
     }
     pub fn init(&mut self) {
@@ -556,9 +421,11 @@ impl Bus {
         // if address == 0xFF44 {
         //     return;
         // }
+
         // Reset counter if accessing 0xFF04 div timer
         if address == 0xFF04 {
             self.write_byte(0xFF04, 0);
+            self.timer_div_intern = 0;
             return;
         }
         if self.vram_lock && (0x8000..=0x9FFF).contains(&address) {
@@ -718,7 +585,7 @@ mod tests {
         }
         interupt_reg.reset_flag(&InteruptType::VBlank);
         {
-            let mut bus = bus_rc.borrow_mut();
+            let bus = bus_rc.borrow_mut();
             println!("0xFF0F: {}", bus.read_byte_as_cpu(0xFF0F));
             assert_eq!(bus.read_byte_as_cpu(0xFF0F), 0b0000_0000);
         }

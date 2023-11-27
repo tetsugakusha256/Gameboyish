@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, time::Instant};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     bus::Bus,
@@ -7,7 +7,7 @@ use crate::{
     ppu::PPU,
     quartz::Quartz,
     timer_reg::TimerReg,
-    util::tiles_util::{vram_to_screen, ScreenVector},
+    util::tiles_util::vram_to_screen,
     windows::game_window::GameWindow,
 };
 #[derive(PartialEq, Eq)]
@@ -34,32 +34,15 @@ impl Emulator {
         self.debug_screen.init("Debug", false);
         self.bus
             .borrow_mut()
-            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/cpu_instrs/02-interrupts.gb")
+            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/instr_timing/instr_timing.gb")
             .unwrap();
         // Load boot rom
         // self.bus.borrow_mut().init();
 
         // Activate logging
-        // self.cpu.init_with_log();
+        self.cpu.init_with_log();
 
         self.start();
-    }
-    pub fn start(&mut self) {
-        self.state = EmulatorState::Running;
-        self.main_loop();
-    }
-
-    pub fn stop(&mut self) {
-        self.state = EmulatorState::Stopped;
-    }
-
-    pub fn pause_resume(&mut self) {
-        let state = &self.state;
-        self.state = match state {
-            EmulatorState::Running => EmulatorState::Paused,
-            EmulatorState::Paused => EmulatorState::Running,
-            EmulatorState::Stopped => EmulatorState::Stopped,
-        }
     }
     // main emulator loop
     fn main_loop(&mut self) {
@@ -84,23 +67,37 @@ impl Emulator {
         // then read the value (How many cycles in between those?)
         // self.io_handler.next_tick();
         self.cpu.next_tick();
-        // println!("cycle : {}", self.cycles);
-        self.ppu.next_tick();
         self.timer.next_tick();
-        // self.bus.borrow_mut().write_slice(0x8000, &[0x56u8;8192]);
+        self.ppu.next_tick();
 
+        // Screen update at the end of every frame
         if self.cycles % 70224 == 0 {
             self.debug_screen.next_tick(&vram_to_screen(
                 Vec::from(self.bus.borrow().read_bytes_range(0x8000, 8192)),
                 16,
             ));
-            // println!("Screen_array: {:?}", &self.ppu.screen_array);
             self.screen.next_tick(&self.ppu.screen_array);
+            // println!("Screen_array: {:?}", &self.ppu.screen_array);
             // println!("Bg map : {:?}", self.bus.borrow().read_bytes_range(0x9800, 1024));
         }
 
         if self.cycles > 1483180000 {
             self.pause_resume();
+        }
+    }
+    fn start(&mut self) {
+        self.state = EmulatorState::Running;
+        self.main_loop();
+    }
+    fn stop(&mut self) {
+        self.state = EmulatorState::Stopped;
+    }
+    fn pause_resume(&mut self) {
+        let state = &self.state;
+        self.state = match state {
+            EmulatorState::Running => EmulatorState::Paused,
+            EmulatorState::Paused => EmulatorState::Running,
+            EmulatorState::Stopped => EmulatorState::Stopped,
         }
     }
 }
@@ -109,7 +106,7 @@ impl Emulator {
 mod tests {
     use super::{Emulator, EmulatorState, CPU};
     use crate::{
-        bus::{Bus, VRAM},
+        bus::Bus,
         io_handler::IOHandler,
         ppu::PPU,
         quartz::Quartz,

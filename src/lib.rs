@@ -9,3 +9,4 @@ pub mod register;
 pub mod timer_reg;
 pub mod util;
 pub mod windows;
+pub mod mem;

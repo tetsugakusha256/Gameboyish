@@ -1,9 +1,9 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    bus::{Bus, LCDControlReg, LCDStatusReg, VRAM},
+    bus::{Bus, LCDControlReg, LCDStatusReg},
     util::tiles_util::{tile_fuse_byte_u8, ScreenVector},
-    windows::game_window::{GAMEBOY_SCREEN_HEIGHT, GAMEBOY_SCREEN_WIDTH},
+    windows::game_window::{GAMEBOY_SCREEN_HEIGHT, GAMEBOY_SCREEN_WIDTH}, mem::vram::VRAM,
 };
 
 #[derive(Debug, PartialEq, Eq)]

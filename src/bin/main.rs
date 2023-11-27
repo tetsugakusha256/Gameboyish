@@ -1,5 +1,5 @@
 use game_boyish::{
-    bus::{Bus, VRAM},
+    bus::Bus,
     cpu::CPU,
     emulator::{Emulator, EmulatorState},
     io_handler::IOHandler,

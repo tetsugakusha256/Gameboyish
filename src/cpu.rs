@@ -1,6 +1,6 @@
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::{cell::RefCell, rc::Rc};
 
 use crate::bus::{InteruptReg, InteruptType};
@@ -63,34 +63,19 @@ impl CPU {
             start_time: Instant::now(),
         }
     }
+    // Create a CPU with the register set to the values it should have after boot
     pub fn new_doctor(bus: Rc<RefCell<Bus>>) -> CPU {
-        CPU {
-            reg: Registers::new_doctor(),
-            interupt_reg: InteruptReg::new(Rc::clone(&bus)),
-            bus,
-            cycles_to_wait: 0,
-            cycles_since_last_cmd: 0,
-            total_tick: 0,
-            opcode: 0x00,
-            instruction_dict_notprefixed: load_json("opcodes_nopre.json").unwrap(),
-            instruction_dict_prefixed: load_json("opcodes_pre.json").unwrap(),
-            ime: false,
-            halt: false,
-            next_pc: 0x00,
-            log_buffer: None,
-            current_interupt: None,
-            interupt_stage: 0,
-            interupt_happened: false,
-            start_time: Instant::now(),
-        }
+        let mut cpu = CPU::new(bus);
+        cpu.reg = Registers::new_doctor();
+        cpu
     }
     pub fn init_with_log(&mut self) {
         self.init_log_file("log/log_file.txt");
     }
-    pub fn halt(&mut self) {
+    fn halt(&mut self) {
         self.halt = true;
     }
-    pub fn stop(&mut self) {
+    fn stop(&mut self) {
         // TODO: what should actually happen is a way to stop the timer from ticking
         self.bus.borrow_mut().write_byte_as_cpu(0xFF04, 0x00);
     }
@@ -124,12 +109,12 @@ impl CPU {
             if self.bus.borrow().read_byte(0x0000) != 60 && self.total_tick < 254076 {
                 // println!("STOP {}", self.total_tick);
             }
-            if self.total_tick / 152038 == 0 {
+            if self.total_tick / 31510 == 0 {
                 {
                     let bus = self.bus.borrow();
                     println!(
                         "Timer  div : {}, tima : {}, tma : {}, tac : {}, interupt flag : {}, inter enable : {}",
-                        bus.read_byte(0xFF04),
+                        bus.timer_div_intern,
                         bus.read_byte(0xFF05),
                         bus.read_byte(0xFF06),
                         bus.read_byte(0xFF07),
@@ -139,7 +124,7 @@ impl CPU {
                 }
                 let reg = &self.reg;
                 let bus = self.bus.borrow();
-                let mut text = format!(
+                let text = format!(
                     "A:{:#04x} F:{:#04x} B:{:#04x} C:{:#04x} D:{:#04x} E:{:#04x} H:{:#04x} L:{:#04x} SP:{:#06x} PC:{:#06x} PCMEM:{:#04x},{:#04x},{:#04x},{:#04x}, ime: {}, tic: {}",
                     reg.get_a(),
                     reg.get_f(),
@@ -164,6 +149,9 @@ impl CPU {
             self.cycles_since_last_cmd = 0;
             // Run opcode
             self.tick(self.opcode);
+            if self.total_tick / 31510 == 0 {
+                println!("Cycle to wait {}", self.cycles_to_wait);
+            }
             // {
             //     let bus = self.bus.borrow();
             //     println!(
@@ -185,10 +173,13 @@ impl CPU {
     pub fn tick(&mut self, opcode: u8) {
         // Set next_pc mem according to instruction byte length might be assigned again by a jump
         self.next_pc = self.get_next_pc(opcode);
-        self.cycles_to_wait = self.get_cycles_to_wait(opcode);
+        self.cycles_to_wait = self.get_cycles_to_wait(opcode, false);
         if opcode == 0xCB {
             // Set opcode to next byte
             let opcode = self.bus.borrow().read_byte_as_cpu(self.reg.get_pc_next());
+            // Get new cycle to wait after prefix and adding the 4 prefix cycle
+            self.cycles_to_wait = self.get_cycles_to_wait(opcode, true);
+            // self.cycles_to_wait += 4;
             self.opcode_prefixed_tick(self.instruction_dict_prefixed[opcode as usize].clone());
         } else {
             self.opcode_noprefix_tick(
@@ -197,9 +188,9 @@ impl CPU {
             );
         };
     }
-    fn get_cycles_to_wait(&self, opcode: u8) -> u8 {
+    fn get_cycles_to_wait(&self, opcode: u8, is_pre: bool) -> u8 {
         let dict;
-        if opcode == 0xCB {
+        if is_pre {
             dict = &self.instruction_dict_prefixed;
         } else {
             dict = &self.instruction_dict_notprefixed;
@@ -258,22 +249,22 @@ impl CPU {
             NopreOpcodeMnemonics::LDH => self.op_load(instruction, opcode),
             NopreOpcodeMnemonics::PREFIX => self.opcode_prefixed_tick(instruction),
             NopreOpcodeMnemonics::RLCA => {
-                let (res, z, n, h, c) = rotate_left(reg.get_a());
+                let (res, _, n, h, c) = rotate_left(reg.get_a());
                 reg.set_a(res);
                 reg.set_flags(false, n, h, c);
             }
             NopreOpcodeMnemonics::RLA => {
-                let (res, z, n, h, c) = rotate_left_carry(reg.get_a(), reg.flag_c());
+                let (res, _, n, h, c) = rotate_left_carry(reg.get_a(), reg.flag_c());
                 reg.set_a(res);
                 reg.set_flags(false, n, h, c);
             }
             NopreOpcodeMnemonics::RRCA => {
-                let (res, z, n, h, c) = rotate_right(reg.get_a());
+                let (res, _, n, h, c) = rotate_right(reg.get_a());
                 reg.set_a(res);
                 reg.set_flags(false, n, h, c);
             }
             NopreOpcodeMnemonics::RRA => {
-                let (res, z, n, h, c) = rotate_right_carry(reg.get_a(), reg.flag_c());
+                let (res, _, n, h, c) = rotate_right_carry(reg.get_a(), reg.flag_c());
                 reg.set_a(res);
                 reg.set_flags(false, n, h, c);
             }
@@ -529,7 +520,7 @@ impl CPU {
                 NopreOperands::NC => !reg.flag_c(),
                 _ => panic!("Invalid jump condition"),
             };
-            if !conditional {
+            if !condition {
                 self.cycles_to_wait = instruction.cycles[1] as u8;
             }
         }
@@ -605,7 +596,6 @@ impl CPU {
         let bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
         let a = reg.get_a();
-        let instruction_byte_size = instruction.bytes as u16;
         let result = match target_operand {
             NopreOperands::A
             | NopreOperands::B
@@ -815,7 +805,6 @@ impl CPU {
         let from_type: NopreOperands = from.name.into();
         let mut bus = self.bus.borrow_mut();
         let reg = &mut self.reg;
-        let instruction_byte_size = instruction.bytes as u16;
 
         let value = match from_type {
             NopreOperands::A
@@ -1105,7 +1094,18 @@ impl CPU {
                 );
                 text = text.to_string().replace("0x", "");
                 text = text.to_uppercase();
+                writeln!(buf_writer, "{}", text).unwrap();
+                text = format!("Div inner : {} ", self.bus.borrow().timer_div_intern % 256);
                 // Append the line to the file
+                write!(buf_writer, "{}", text).unwrap();
+                text = format!(
+                    "Div : {}, Tima : {}, Tma : {}, Tac : {}, Flags : {}",
+                    self.bus.borrow().read_byte(0xFF04),
+                    self.bus.borrow().read_byte(0xFF05),
+                    self.bus.borrow().read_byte(0xFF06),
+                    self.bus.borrow().read_byte(0xFF07),
+                    self.bus.borrow().read_byte(0xFF0F)
+                );
                 writeln!(buf_writer, "{}", text).unwrap();
                 // Ensure the data is written to disk
                 let _ = buf_writer.flush();
