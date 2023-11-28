@@ -14,17 +14,37 @@ impl VRAM {
         let bus = self.bus.borrow();
         (bus.read_byte(0xFF43), bus.read_byte(0xFF42))
     }
+    // Return (wx, wy)
+    pub fn get_window(&self) -> (u8, u8) {
+        let bus = self.bus.borrow();
+        (bus.read_byte(0xFF4B), bus.read_byte(0xFF4A))
+    }
     // tile_number = the tile_number in the bg tile map(the map that stores id)
+    // So it goes above 256 because the screen can show 20*18=360 tile on the screen
+    pub fn get_window_tile_line(&self, y_offset: u8, tile_number: u16) -> (u8, u8) {
+        // println!(
+        //     "tile line : y_offset {}, tile_numbex: {}",
+        //     y_offset, tile_number
+        // );
+        let address = match self.get_lcd_control().win_tile_map() {
+            true => 0x9C00,
+            false => 0x9800,
+        };
+        self.get_tile_x_line_2bytes(address + tile_number as u16, y_offset)
+    }
+    // tile_number = the tile index in the bg tile map(the map that stores id)
     // So it goes above 256 because the screen can show 20*18=360 tile on the screen
     pub fn get_background_tile_line(&self, y_offset: u8, tile_number: u16) -> (u8, u8) {
         // println!(
         //     "tile line : y_offset {}, tile_numbex: {}",
         //     y_offset, tile_number
         // );
+       // get address of the bg tile map (that stores id)
         let address = match self.get_lcd_control().bg_tile_map() {
             true => 0x9C00,
             false => 0x9800,
         };
+        // address + tile_number = address to get the tile id
         self.get_tile_x_line_2bytes(address + tile_number as u16, y_offset)
     }
     // get the two bytes responsible for the x line tile color
@@ -35,12 +55,14 @@ impl VRAM {
         let bus = self.bus.borrow();
         let tile_id = bus.read_byte_as_cpu(tile_id_address) as u16;
         // println!("tile id: {}, line: {}", tile_id, line);
-        // Convert tile number to tile address
+        
+       println!("lcdc 4 {}", self.get_lcd_control().bg_win_tiles());
+        // Convert tile id to tile address
         let tile_address = match self.get_lcd_control().bg_win_tiles() {
             true => 0x8000u16 + tile_id * 16,
             false => match tile_id {
                 0..=127 => 0x9000u16 + tile_id * 16,
-                128..=255 => 0x8800u16 + tile_id * 16 - 128,
+                128..=255 => 0x8800u16 + (tile_id - 128) * 16,
                 _ => panic!("Impossible"),
             },
         };

@@ -1022,17 +1022,17 @@ impl CPU {
             }
         }
         if self.current_interupt.is_some() {
-            println!(
-                "LET'S GOO INTERUPT : {:?}",
-                self.current_interupt.as_ref().unwrap()
-            );
+            // println!(
+            //     "LET'S GOO INTERUPT : {:?}",
+            //     self.current_interupt.as_ref().unwrap()
+            // );
             // push current pc on stack
             let reg = &mut self.reg;
 
             let current_interupt = self.current_interupt.as_ref().unwrap();
             // set pc to correct address
             self.next_pc = if self.halt && !self.ime {
-                println!("pc {:#06x}", self.reg.pc);
+                // println!("pc {:#06x}", self.reg.pc);
                 self.reg.pc
             } else {
                 self.interupt_reg.reset_flag(current_interupt);

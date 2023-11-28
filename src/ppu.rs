@@ -2,8 +2,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     bus::{Bus, LCDControlReg, LCDStatusReg},
+    mem::vram::VRAM,
     util::tiles_util::{tile_fuse_byte_u8, ScreenVector},
-    windows::game_window::{GAMEBOY_SCREEN_HEIGHT, GAMEBOY_SCREEN_WIDTH}, mem::vram::VRAM,
+    windows::game_window::{GAMEBOY_SCREEN_HEIGHT, GAMEBOY_SCREEN_WIDTH},
 };
 
 #[derive(Debug, PartialEq, Eq)]
@@ -117,9 +118,19 @@ impl PPU {
             };
         }
     }
+    fn insert_window_gray_vec_into_line_pixels(&mut self, vec: &Vec<u8>, pos_x: usize) {
+        for i in 0..=7 {
+            if pos_x + i < 160 && vec[i] != 0 {
+                self.line_pixels[pos_x + i] = vec[i]
+            };
+        }
+    }
 
     fn mode2(&mut self) {
         // println!("dots counter mode {}", self.dots_counter_mode);
+        
+        // I don't do it pixel by pixel but line per line, so at the first dot in 
+        // mode2 I make calculation for the current line
         if self.dots_counter_mode == 1 {
             self.vram.lock_oam();
             self.vram.unlock_vram();
@@ -129,42 +140,46 @@ impl PPU {
 
             // Background
             let (scx, scy) = self.vram.get_background();
+            let (wx, wy) = self.vram.get_window();
             // println!("Drawing line {} of background", self.ly);
             // println!("scy {},scx {}", scy, scx);
+            // println!("wy {},wx {}", wy, wx);
 
             // Background line calculation
             for i in 0..20 {
                 // Get the 2 bytes for the correct line of the correct tile
                 let (l, h) = self.vram.get_background_tile_line(
                     (scy.wrapping_add(self.ly)) % 8,
-                // TODO: add scx / 8 +
-                     i + (scy.wrapping_add(self.ly) as u16 / 8) * 32,
+                    // TODO: add scx / 8 +
+                    i + (scy.wrapping_add(self.ly) as u16 / 8) * 32,
                 );
                 let line_gray_value = tile_fuse_byte_u8(l, h);
                 // TODO: add a shift of the array by scx % 8
                 self.insert_gray_vec_into_line_pixels(&line_gray_value, 8 * i as usize);
             }
 
-            // Window line calculation
-            for i in 0..20 {
-                // Get the 2 bytes for the correct line of the correct tile
-                let (l, h) = self.vram.get_background_tile_line(
-                    (scy.wrapping_add(self.ly)) % 8,
-                     i + (scy.wrapping_add(self.ly) as u16 / 8) * 32,
-                );
-                let line_gray_value = tile_fuse_byte_u8(l, h);
-                // TODO: add insert function that will take transparency into account
-                self.insert_gray_vec_into_line_pixels(&line_gray_value, 8 * i as usize);
+            if self.lcd_control.win_enable() {
+                // Window line calculation
+                for i in 0..20 {
+                    // Get the 2 bytes for the correct line of the correct tile
+                    let (l, h) = self.vram.get_window_tile_line(
+                        (wy + self.ly) % 8,
+                        i + (wx as u16 + self.ly as u16 / 8) * 32,
+                    );
+                    let line_gray_value = tile_fuse_byte_u8(l, h);
+                    // TODO: add insert function that will take transparency into account
+                    self.insert_window_gray_vec_into_line_pixels(&line_gray_value, 8 * i as usize);
+                }
             }
 
             let obj_tile_map = self.vram.get_oam_sprites_vec();
             let obj_height = if self.lcd_control.obj_size() { 8 } else { 16 };
+            // println!("obj_tile_map: {:?}", obj_tile_map);
             let line_object = obj_tile_map.iter().filter(|obj| {
                 obj.y < (144 + 16)
                     && obj.y + obj_height > 16
                     && (ly_screen >= obj.y && ly_screen < obj.y + obj_height)
             });
-            // println!("objs {:?}", obj_tile_map);
 
             // obj
             for obj in line_object {

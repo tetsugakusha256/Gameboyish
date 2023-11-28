@@ -155,7 +155,14 @@ fn print_tile_vec(tile_vec: TileVector) {
 }
 
 pub fn from_u8_gray_to_rgb(gray: u8) -> u32 {
-    let gray = gray.saturating_mul(85) as u32;
+    let gray = match gray {
+        0 =>255,
+        1 =>175,
+        2 =>85,
+        3 =>0,
+        _ =>0,
+
+    };
     let (r, g, b) = (gray, gray, gray);
     (r << 16) | (g << 8) | b
 }

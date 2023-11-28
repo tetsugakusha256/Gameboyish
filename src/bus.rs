@@ -56,11 +56,11 @@ impl InteruptReg {
     // Return the hightest priority interupts that has it's flag and is enable
     pub fn query_interupts_flag_enable(&self) -> Option<InteruptType> {
         let is_interupts = self.get_interupt_flag() & self.get_interupt_enable();
-        println!(
-            "query_interupts flag: {}, enable: {}",
-            self.get_interupt_flag(),
-            self.get_interupt_enable()
-        );
+        // println!(
+        //     "query_interupts flag: {}, enable: {}",
+        //     self.get_interupt_flag(),
+        //     self.get_interupt_enable()
+        // );
         for i in 0..=4 {
             if is_interupts.get_bit(i) {
                 return Some(i.into());
@@ -336,12 +336,12 @@ impl Bus {
     }
     pub fn read_byte_as_cpu(&self, address: u16) -> u8 {
         // temporary gamedoctor thing
-        if address == 0xFF02 || address == 0xFF44 {
-            return 0x90;
-        }
-        if address == 0xFF44 {
-            return 0x90;
-        }
+        // if address == 0xFF02 || address == 0xFF44 {
+        //     return 0x90;
+        // }
+        // if address == 0xFF44 {
+        //     return 0x90;
+        // }
 
         if self.vram_lock && (0x8000..=0x9FFF).contains(&address) {
             return 0x90;
@@ -357,12 +357,12 @@ impl Bus {
         let small_endian_address = ((low as u16) << 8) + (high as u16);
 
         // Doctor
-        if small_endian_address == 0xFF02 || small_endian_address == 0xFF44 {
-            return 0x90;
-        }
-        if small_endian_address == 0xFF44 {
-            return 0x90;
-        }
+        // if small_endian_address == 0xFF02 || small_endian_address == 0xFF44 {
+        //     return 0x90;
+        // }
+        // if small_endian_address == 0xFF44 {
+        //     return 0x90;
+        // }
 
         self.read_byte_as_cpu(small_endian_address)
     }

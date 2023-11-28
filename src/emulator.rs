@@ -34,13 +34,13 @@ impl Emulator {
         self.debug_screen.init("Debug", false);
         self.bus
             .borrow_mut()
-            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/instr_timing/instr_timing.gb")
+            .load_cartridge("/home/anon/Documents/Code/GameBoyish/roms/Dr. Mario (JU) (V1.1).gb")
             .unwrap();
         // Load boot rom
         // self.bus.borrow_mut().init();
 
         // Activate logging
-        self.cpu.init_with_log();
+        // self.cpu.init_with_log();
 
         self.start();
     }
@@ -78,7 +78,7 @@ impl Emulator {
             ));
             self.screen.next_tick(&self.ppu.screen_array);
             // println!("Screen_array: {:?}", &self.ppu.screen_array);
-            // println!("Bg map : {:?}", self.bus.borrow().read_bytes_range(0x9800, 1024));
+            println!("Bg map : {:?}", self.bus.borrow().read_bytes_range(0x9800, 1024));
         }
 
         if self.cycles > 1483180000 {

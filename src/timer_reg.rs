@@ -20,16 +20,17 @@ impl TimerReg {
         self.tima_tick();
     }
     // TODO: refactor
+    // TODO: implement Timer Overflow Behaviour with proper delay
     fn tima_tick(&mut self) {
         // If tima is enable
         if self.get_tac_ff07().get_bit(2) {
             let tima_rate = self.get_tima_rate();
             let mut bus = self.bus.borrow_mut();
             bus.timer_tima_intern = bus.timer_tima_intern.wrapping_add(1);
-            println!(
-                "tima_rate {}, tima_intern {}",
-                tima_rate, bus.timer_tima_intern
-            );
+            // println!(
+            //     "tima_rate {}, tima_intern {}",
+            //     tima_rate, bus.timer_tima_intern
+            // );
 
             if bus.timer_tima_intern >= tima_rate {
                 let mut tima = bus.read_byte(0xFF05);
